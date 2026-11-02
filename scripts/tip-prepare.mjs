@@ -5,7 +5,8 @@
 // 3) 1Click dry:true quote: tip in ETH on Base -> NEAR for the pet
 // 4) build the EIP-1559 sweep tx; with --sign the pet owner asks Petri ->
 //    MPC to sign it for real (testnet) and we check it recovers to the pet's address.
-// Never broadcasts. Writes examples/tip/tip-<network>.json.
+// Never broadcasts. Writes examples/tip/out/tip-<network>.json (git-ignored); the committed
+// examples/tip/tip-testnet.json is the recorded artifact and is never rewritten.
 import fs from 'node:fs';
 import { ethers } from 'ethers';
 import { loadNetwork, petEvmAddress, evmRpc, buildSweepTx, requestForeignSignature, signedSweep } from '../lib/tip.mjs';
@@ -33,7 +34,10 @@ try {
   quote = { dry: oc.dry, amountIn: q.quote.amountInFormatted, amountOut: q.quote.amountOutFormatted, amountOutUsd: q.quote.amountOutUsd,
     timeEstimate: q.quote.timeEstimate, depositAddress: q.quote.depositAddress ?? null, recipient, refundTo: address };
   console.log(`3) 1Click ${oc.dry ? 'dry ' : ''}quote: ${quote.amountIn} ETH (Base) -> ${quote.amountOut} NEAR (~$${quote.amountOutUsd}) to ${recipient}, ~${quote.timeEstimate}s`);
-} catch (e) { console.log(`3) 1Click quote unavailable: ${e.message.slice(0, 120)}`); }
+} catch (e) {
+  const m = /fetch failed|ENOTFOUND|ECONN|timeout/i.test(e.message) ? '1Click is unreachable right now (network error). Try again later.' : e.message.split('\n')[0].slice(0, 200);
+  console.log(`3) 1Click quote skipped: ${m}`);
+}
 
 // Testnet: 1Click has no deposit address, so the sweep goes to the pet's own address (0 value).
 const to = quote?.depositAddress ?? address;
@@ -43,8 +47,10 @@ const tx = buildSweepTx({ chainId: cfg.evm.chainId, nonce: Number(BigInt(nonce))
 const payload = tx.unsignedHash.slice(2);
 console.log(`4) sweep tx -> ${to}, value ${ethers.formatEther(tx.value)} ETH; signing hash ${payload}`);
 
-const outFile = `examples/tip/tip-${cfg.name}.json`;
-const prev = fs.existsSync(outFile) ? JSON.parse(fs.readFileSync(outFile, 'utf8')) : {};
+const outFile = `examples/tip/out/tip-${cfg.name}.json`, recorded = `examples/tip/tip-${cfg.name}.json`;
+const prevFile = [outFile, recorded].find((f) => fs.existsSync(f));
+const prev = prevFile ? JSON.parse(fs.readFileSync(prevFile, 'utf8')) : {};
+fs.mkdirSync('examples/tip/out', { recursive: true });
 const out = { network: cfg.name, token_id: tokenId, petri: cfg.petri, mpc: cfg.mpc, path: `pet-${tokenId}`, derived_key: key, evm_address: address,
   evm_chain: cfg.evm, balance_wei: BigInt(bal).toString(), quote, sweep: { unsigned: tx.unsignedSerialized, hash: payload },
   signed: prev.signed ?? null, quoted_at: new Date().toISOString() };

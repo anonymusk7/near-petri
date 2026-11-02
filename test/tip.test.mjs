@@ -36,3 +36,12 @@ test('base58 decode keeps leading zeros', () => {
   assert.deepEqual([...b58decode('11')], [0, 0]);
   assert.equal(b58decode('2g').toString('hex'), '61');
 });
+
+test('1Click outage errors are short, never raw HTML', async () => {
+  const { oneClickError, getQuote } = await import('../lib/oneclick.mjs');
+  const html = '<!DOCTYPE html><html><head><title>521</title></head><body>' + 'x'.repeat(5000) + '</body></html>';
+  assert.equal(oneClickError(521, html), '1Click is unavailable right now (HTTP 521). Try again later.');
+  assert.equal(oneClickError(400, '{"message":"amount is too low"}'), '1Click quote failed: 400 amount is too low');
+  await assert.rejects(getQuote({ originAsset: 'a', destinationAsset: 'b', amount: 1, recipient: 'r' }, async () => ({ ok: false, status: 521, text: async () => html })),
+    (e) => !e.message.includes('<') && e.message.length < 100);
+});
