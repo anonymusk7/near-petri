@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import {
   BadgeCheckIcon, BatteryLowIcon, ExternalLinkIcon, KeyRoundIcon, MoonIcon, SendIcon,
-  ShieldCheckIcon, SparklesIcon, SunIcon, WalletIcon,
-} from "lucide-react"
+  ShieldCheckIcon, SparklesIcon, SunIcon, WalletIcon, TrophyIcon, CoinsIcon, TriangleAlertIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -25,12 +24,16 @@ type Pet = {
   token_id: string; name: string; owner_id: string; balance: string; replies: number; asleep: boolean
   prompt_hash: string; pet_account: string | null; account_balance?: string
   keys?: { public_key: string; permission: Perm }[]; sim_balance: string; sim_asleep: boolean
+  arena_wins?: number; tip?: { chain: string; address: string; signed_tx?: string }
 }
-type State = { contract: string; network: string; source: string; signers: { model: string; address: string }[]; pets: Pet[]; sleep_threshold: string }
+type Arena = { id: number; challenge: string; question: string; rule: string; winner: string; tx: string | null
+  entries: { token_id: string; response: string; chars: number; has_word: boolean }[] }
+type State = { contract: string; network: string; source: string; signers: { model: string; address: string }[]; pets: Pet[]; sleep_threshold: string
+  arena?: Arena[]; tip_quote?: { amountIn: string; amountOut: string; recipient: string } | null }
 type Verified = {
   id: string; msg: string; reply: string; cost: string; chat_id: string; model: string; signer: string; tx: string
   local: { ok: boolean; passed: number; total: number; checks: { name: string; ok: boolean }[] }
-  onchain: { ok: boolean; signer?: string; error?: string }
+  onchain: { ok: boolean; signer?: string; error?: string }; legacy?: string | null
 }
 type Msg =
   | { kind: "user"; text: string }
@@ -104,7 +107,22 @@ function PetCard({ pet, selected, onSelect, contract }: { pet: Pet; selected: bo
             )
             : <Badge variant="ghost">backend-charged (v1 pet)</Badge>}
           {onlyCharge && <Badge variant="outline"><KeyRoundIcon data-icon="inline-start" />key: charge_verified only</Badge>}
+          {(pet.arena_wins ?? 0) > 0 && <Badge variant="outline"><TrophyIcon data-icon="inline-start" />{pet.arena_wins} arena win{pet.arena_wins === 1 ? "" : "s"}</Badge>}
         </div>
+        {pet.tip && (
+          <div className="flex items-center justify-between gap-2 text-xs">
+            <Tooltip>
+              <TooltipTrigger render={<span className="inline-flex items-center gap-1 text-muted-foreground" />}>
+                <CoinsIcon className="size-3" />tip from any chain
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs">
+                {pet.tip.chain} address derived by NEAR Chain Signatures from the Petri contract + path pet-{pet.token_id}. Only the pet NFT owner can ask the MPC network to sign for it.
+                {pet.tip.signed_tx ? ` Real MPC signature: tx ${short(pet.tip.signed_tx, 5)}.` : ""}
+              </TooltipContent>
+            </Tooltip>
+            <span className="font-mono">{short(pet.tip.address, 6)}</span>
+          </div>
+        )}
       </CardContent>
     </Card>
   )
@@ -128,6 +146,12 @@ function VerifiedReply({ r, petName }: { r: Verified; petName: string }) {
             </div>
           </TooltipContent>
         </Tooltip>
+        {r.legacy && (
+          <Tooltip>
+            <TooltipTrigger render={<Badge variant="secondary" />}><TriangleAlertIcon data-icon="inline-start" />legacy v2 receipt</TooltipTrigger>
+            <TooltipContent className="max-w-xs">{r.legacy}</TooltipContent>
+          </Tooltip>
+        )}
         <span>{petName} paid {near(r.cost)} NEAR</span>
         <a className="inline-flex items-center gap-1 underline-offset-4 hover:underline" href={explorer(r.tx)} target="_blank" rel="noreferrer">
           tx {short(r.tx, 5)}<ExternalLinkIcon className="size-3" />
@@ -201,6 +225,28 @@ export function App() {
           <aside className="flex flex-col gap-4">
             {!st && <><Skeleton className="h-48" /><Skeleton className="h-48" /></>}
             {st?.pets.map((p) => <PetCard key={p.token_id} pet={p} contract={st.contract} selected={p.token_id === sel} onSelect={() => setSel(p.token_id)} />)}
+            {st?.arena?.map((a) => (
+              <Card size="sm" key={a.id}>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2"><TrophyIcon className="size-4" />Arena #{a.id}: “{a.challenge}”</CardTitle>
+                  <CardDescription>{a.question}</CardDescription>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-2 text-xs">
+                  {a.entries.map((e) => {
+                    const p = st.pets.find((x) => x.token_id === e.token_id)
+                    return (
+                      <div key={e.token_id} className={cn("rounded-lg border p-2", e.token_id === a.winner && "border-primary")}>
+                        <div className="mb-1 flex justify-between font-medium"><span>{p?.name ?? `#${e.token_id}`}{e.token_id === a.winner ? " 🏆" : ""}</span>
+                          <span className="font-mono text-muted-foreground">{e.has_word ? "word ✓" : "word ✗"} · {e.chars} chars</span></div>
+                        <div className="text-muted-foreground">{e.response}</div>
+                      </div>
+                    )
+                  })}
+                  <div className="text-muted-foreground">Rule (enforced by the contract on TEE-signed bytes): {a.rule}</div>
+                  {a.tx && <a className="inline-flex items-center gap-1 underline-offset-4 hover:underline" href={explorer(a.tx)} target="_blank" rel="noreferrer">settled tx {short(a.tx, 5)}<ExternalLinkIcon className="size-3" /></a>}
+                </CardContent>
+              </Card>
+            ))}
             <Card size="sm">
               <CardHeader>
                 <CardTitle>Demo the sleep state</CardTitle>

@@ -1,0 +1,68 @@
+{
+  "v": 1,
+  "chat_id": "chatcmpl-b98c5a42-a5c0-40c5-8b49-4451205b8e59",
+  "model": "deepseek-ai/DeepSeek-V4.1-Flash-1017",
+  "request_hash": "05b3929bb3708b6bfddb8214bdf7f48fbd01b78192ab932613dc708f5d1bf6b6",
+  "response_hash": "97897c8f8491053c0bdabc178cf3e108d4212f6943f00e37f48a0564df9fcb9f",
+  "signature": {
+    "text": "deepseek-ai/DeepSeek-V4.1-Flash-1017:05b3929bb3708b6bfddb8214bdf7f48fbd01b78192ab932613dc708f5d1bf6b6:97897c8f8491053c0bdabc178cf3e108d4212f6943f00e37f48a0564df9fcb9f",
+    "signature": "0x44e85a3c227bc850e49f28097a30cd2941a6fb7ce531577581fec1369cfb326d4ddd64a7b67f23e8cf4864e615699ab177969f75244b2f892bcdb575ea1e04f61b",
+    "signing_address": "0xfe0071895500a9755c18044948ab4f4e1a7f337e",
+    "signing_algo": "ecdsa",
+    "signature_kind": "provider_tee"
+  },
+  "signing_address": "0xfe0071895500a9755c18044948ab4f4e1a7f337e",
+  "attestation": {
+    "nonce": "4940776d19116366dccc5d46c537c8c63d2c19f8536e0868b7f49b88a065a1a8",
+    "verified_at": 1793603106,
+    "gateway": {
+      "signing_address": "0xb98a789cdc4817275f5155593ba73ef2a957e779",
+      "tcb_status": "UpToDate",
+      "compose_hash": "f571e5dafe8f96baf116a271b4be9cba228b447dd6ebe502bbda81ede7bcc7ce"
+    },
+    "model": {
+      "signing_address": "0xfe0071895500a9755c18044948ab4f4e1a7f337e",
+      "signing_algo": "ecdsa",
+      "tcb_status": "UpToDate",
+      "compose_hash": "ae66f844658a7aee331dcb9fb59bd40323d71d192d37719e022cc4af8389265b",
+      "rtmr3": "b82e033606007266ad7f92273645be6c06ef5712dc5c110ec1e306d79afd14e1a9e41e092353383cbc189d57768f5b8d",
+      "gpu": {
+        "overall": true,
+        "iat": 1793603104,
+        "gpus": 8,
+        "arch": "HOPPER"
+      }
+    },
+    "candidates": 1
+  },
+  "pet": {
+    "token_id": "1",
+    "name": "Moss",
+    "prompt": "Sleepy moss creature who answers in calm, tiny whispers.",
+    "prompt_hash": "e9947b34bb71765dfb205786be8807bcf7fda643a6b397e04515b765450a87a0"
+  },
+  "msg": "Arena round: describe rain in one line and use the word puddle.",
+  "reply": "Rain whispers down, and every puddle holds a tiny piece of sky.",
+  "usage": {
+    "prompt_tokens": 78,
+    "completion_tokens": 96
+  },
+  "cost": "1174000000000000000000",
+  "receipt": {
+    "v": 2,
+    "token_id": "1",
+    "prompt_hash": "e9947b34bb71765dfb205786be8807bcf7fda643a6b397e04515b765450a87a0",
+    "chat_id": "chatcmpl-b98c5a42-a5c0-40c5-8b49-4451205b8e59",
+    "model": "deepseek-ai/DeepSeek-V4.1-Flash-1017",
+    "request_hash": "05b3929bb3708b6bfddb8214bdf7f48fbd01b78192ab932613dc708f5d1bf6b6",
+    "response_hash": "97897c8f8491053c0bdabc178cf3e108d4212f6943f00e37f48a0564df9fcb9f"
+  },
+  "reply_hash": "eea01c1d9d2cbf1546f893131d32d293bf407e4b7ccb8608c2d57909b8b0bbb8",
+  "request": "{\"model\":\"deepseek-ai/DeepSeek-V4.1-Flash-1017\",\"messages\":[{\"role\":\"system\",\"content\":\"You are Moss, a Petri pet living on NEAR. Sleepy moss creature who answers in calm, tiny whispers. Answer in at most two short sentences.\"},{\"role\":\"user\",\"content\":\"Arena round: describe rain in one line and use the word puddle.\"}],\"max_tokens\":400,\"stream\":false}",
+  "response": "{\"id\":\"chatcmpl-b98c5a42-a5c0-40c5-8b49-4451205b8e59\",\"object\":\"chat.completion\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"Rain whispers down, and every puddle holds a tiny piece of sky.\",\"reasoning_content\":\"We need answer arena round: describe rain in one line and use word puddle. Must at most two short sentences, calm tiny whispers. One line describing rain with puddle. Need concise. Maybe \\\"Rain taps softly on leaves, and each puddle holds a little sky.\\\" That's one line? It's one sentence. Use puddle. At most two short sentences. Answer only.\"},\"finish_reason\":\"stop\",\"logprobs\":null}],\"model\":\"deepseek-ai/DeepSeek-V4.1-Flash-1017\",\"created\":1793603110,\"usage\":{\"prompt_tokens\":78,\"total_tokens\":174,\"completion_tokens\":96,\"prompt_tokens_details\":{\"cached_tokens\":0,\"created_cache_tokens\":64},\"completion_tokens_details\":{\"reasoning_tokens\":79}},\"system_fingerprint\":\"vllm-0.32.0-dp4-ep-aeab261b\"}",
+  "evidence": "preflight-4940776d1911.json",
+  "arena": {
+    "round": "arena-0",
+    "challenge": "puddle"
+  }
+}

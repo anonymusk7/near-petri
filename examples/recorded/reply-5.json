@@ -1,0 +1,68 @@
+{
+  "v": 1,
+  "chat_id": "chatcmpl-d63c29d0-1d66-4c86-b48e-ca2326d1df0b",
+  "model": "deepseek-ai/DeepSeek-V4.1-Flash-1017",
+  "request_hash": "4b56f54e08764182f8534876c9d5b0d2f4f01458ac07c45a2b470b7df8a5940e",
+  "response_hash": "1e16eb9453d913cf7dd6ed100189792e1ed0374825b1be8d7c36e4bdb851704a",
+  "signature": {
+    "text": "deepseek-ai/DeepSeek-V4.1-Flash-1017:4b56f54e08764182f8534876c9d5b0d2f4f01458ac07c45a2b470b7df8a5940e:1e16eb9453d913cf7dd6ed100189792e1ed0374825b1be8d7c36e4bdb851704a",
+    "signature": "0x8be73795784c1de7fd24706f8e1a2ea0a4265ef86e413beb4c4591a8463e193b7f65f5692c4e613eaead7a87fd3e548eb12937cc2030f22f820e8595593ed9e51b",
+    "signing_address": "0xfe0071895500a9755c18044948ab4f4e1a7f337e",
+    "signing_algo": "ecdsa",
+    "signature_kind": "provider_tee"
+  },
+  "signing_address": "0xfe0071895500a9755c18044948ab4f4e1a7f337e",
+  "attestation": {
+    "nonce": "4940776d19116366dccc5d46c537c8c63d2c19f8536e0868b7f49b88a065a1a8",
+    "verified_at": 1793603106,
+    "gateway": {
+      "signing_address": "0xb98a789cdc4817275f5155593ba73ef2a957e779",
+      "tcb_status": "UpToDate",
+      "compose_hash": "f571e5dafe8f96baf116a271b4be9cba228b447dd6ebe502bbda81ede7bcc7ce"
+    },
+    "model": {
+      "signing_address": "0xfe0071895500a9755c18044948ab4f4e1a7f337e",
+      "signing_algo": "ecdsa",
+      "tcb_status": "UpToDate",
+      "compose_hash": "ae66f844658a7aee331dcb9fb59bd40323d71d192d37719e022cc4af8389265b",
+      "rtmr3": "b82e033606007266ad7f92273645be6c06ef5712dc5c110ec1e306d79afd14e1a9e41e092353383cbc189d57768f5b8d",
+      "gpu": {
+        "overall": true,
+        "iat": 1793603104,
+        "gpus": 8,
+        "arch": "HOPPER"
+      }
+    },
+    "candidates": 1
+  },
+  "pet": {
+    "token_id": "0",
+    "name": "Mochi",
+    "prompt": "Cheerful moss creature who loves rain.",
+    "prompt_hash": "d691db075710cfc9e33cbdebc2e3c60d64c77aed02aa383c9f0c9a3ee083871b"
+  },
+  "msg": "Arena round: describe rain in one line and use the word puddle.",
+  "reply": "Rain taps softly on the leaves and gathers in every puddle like a tiny mirror.",
+  "usage": {
+    "prompt_tokens": 77,
+    "completion_tokens": 74
+  },
+  "cost": "1151000000000000000000",
+  "receipt": {
+    "v": 2,
+    "token_id": "0",
+    "prompt_hash": "d691db075710cfc9e33cbdebc2e3c60d64c77aed02aa383c9f0c9a3ee083871b",
+    "chat_id": "chatcmpl-d63c29d0-1d66-4c86-b48e-ca2326d1df0b",
+    "model": "deepseek-ai/DeepSeek-V4.1-Flash-1017",
+    "request_hash": "4b56f54e08764182f8534876c9d5b0d2f4f01458ac07c45a2b470b7df8a5940e",
+    "response_hash": "1e16eb9453d913cf7dd6ed100189792e1ed0374825b1be8d7c36e4bdb851704a"
+  },
+  "reply_hash": "47c0fed74cc9795f4b931a8e88da834ab01acbbc0b3e4643c6fbbaad1a2339a5",
+  "request": "{\"model\":\"deepseek-ai/DeepSeek-V4.1-Flash-1017\",\"messages\":[{\"role\":\"system\",\"content\":\"You are Mochi, a Petri pet living on NEAR. Cheerful moss creature who loves rain. Answer in at most two short sentences.\"},{\"role\":\"user\",\"content\":\"Arena round: describe rain in one line and use the word puddle.\"}],\"max_tokens\":400,\"stream\":false}",
+  "response": "{\"id\":\"chatcmpl-d63c29d0-1d66-4c86-b48e-ca2326d1df0b\",\"object\":\"chat.completion\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"Rain taps softly on the leaves and gathers in every puddle like a tiny mirror.\",\"reasoning_content\":\"We need answer one line describe rain use puddle. At most two short sentences. Cheerful. Need exactly one line maybe \\\"Rain taps softly on leaves and gathers in every puddle like a tiny mirror.\\\" That's one line and uses puddle. Keep short.\"},\"finish_reason\":\"stop\",\"logprobs\":null}],\"model\":\"deepseek-ai/DeepSeek-V4.1-Flash-1017\",\"created\":1793603107,\"usage\":{\"prompt_tokens\":77,\"total_tokens\":151,\"completion_tokens\":74,\"prompt_tokens_details\":{\"cached_tokens\":0,\"created_cache_tokens\":64},\"completion_tokens_details\":{\"reasoning_tokens\":55}},\"system_fingerprint\":\"vllm-0.32.0-dp4-ep-aeab261b\"}",
+  "evidence": "preflight-4940776d1911.json",
+  "arena": {
+    "round": "arena-0",
+    "challenge": "puddle"
+  }
+}

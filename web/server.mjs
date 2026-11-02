@@ -28,7 +28,11 @@ const PROMPT = 'Cheerful moss creature who loves rain.';
 const TX = {
   1: 'FzZ1KTAPa7SYECjXfUfofhTimvwRD9GMvHst46zPvWgn', 2: 'G6ApPumCUYTGpaePvTpttcSeRH4rwhvwf9MuJe2CWioW',
   3: 'BHf2psxhF3i7CGBY3zPQhmBps8bnAaAEUBr3BFZSC9qU', 4: 'BBXro5CMCnCotZ4oUYMpU2hdDZXLWvRgE3z2CgKegxZG',
+  5: '3aB2ktZ4Dox99TiDti8BLZrFjsAmFmMi2dCZjzZZs1LW', 6: '2xPs1k2q684wF6GVLCQ2Nt1TfPvjb45VuiXytZnyFfA2',
 };
+const ARENA_TX = { 0: '3WENtHQS3q6Cv9qGscGLw3fDPaxioGfYndXZVdsUdJso' };
+// Chain Signatures tip artifact (real MPC signature, testnet); addresses are re-derived live when online.
+const TIP = JSON.parse(fs.readFileSync(path.join(ROOT, '..', 'examples', 'tip', 'tip-testnet.json'), 'utf8'));
 
 async function rpc(params) {
   let err;
@@ -57,7 +61,17 @@ async function chainState() {
     p.account_balance = acct.amount;
     p.keys = keys.map((k) => ({ public_key: k.public_key, permission: k.access_key.permission }));
   }
-  return { contract: CONTRACT, network: 'testnet', signers, pets, sleep_threshold: SLEEP_THRESHOLD.toString(), fetched_at: new Date().toISOString() };
+  const n = Number(await view('get_arena_count', {}));
+  const arena = [];
+  for (let i = 0; i < n; i++) {
+    const r = await view('get_arena', { id: String(i) });
+    for (const e of r.entries) { const rec = byHash.get(e.reply_hash); e.response = rec?.reply ?? '(reply not in examples/recorded)'; r.question ??= rec?.msg; }
+    arena.push({ ...r, id: i, tx: ARENA_TX[i] ?? null });
+  }
+  const { petEvmAddress, loadNetwork } = await import('../lib/tip.mjs');
+  for (const p of pets) p.tip = { chain: 'Ethereum Sepolia (any EVM)', ...(await petEvmAddress({ ...loadNetwork('testnet'), petri: CONTRACT }, p.token_id)) };
+  pets[1].tip.signed_tx = TIP.signed.near_tx;
+  return { contract: CONTRACT, network: 'testnet', signers, pets, arena, tip_quote: TIP.quote ?? null, sleep_threshold: SLEEP_THRESHOLD.toString(), fetched_at: new Date().toISOString() };
 }
 
 // Recorded replies, verified once at startup (the Intel quote checks take ~100 ms each).
@@ -68,7 +82,9 @@ const local = new Map(records.map(({ i, rec }) => {
   const ev = JSON.parse(fs.readFileSync(path.join(REC, rec.evidence), 'utf8'));
   return [i, verifyRecord(rec, ev)];
 }));
-const TOKEN_OF = { 1: '0', 2: '0', 3: '0', 4: '1' };
+const byHash = new Map(records.map(({ rec }) => [sha256(`${rec.model}:${rec.request_hash}:${rec.response_hash}`), rec]));
+const TOKEN_OF = { 1: '0', 2: '0', 3: '0', 4: '1', 5: '0', 6: '1' };
+const LEGACY = { 4: "built on Mochi's prompt; accepted by v2, rejected by the v3 contract" };
 
 async function replies(token) {
   const out = [];
@@ -79,7 +95,7 @@ async function replies(token) {
     const v = local.get(i);
     out.push({
       id: `reply-${i}`, msg: rec.msg, reply: rec.reply, cost: rec.cost, chat_id: rec.chat_id, model: rec.model,
-      signer: rec.signing_address, tx: TX[i], reply_hash: replyHash,
+      signer: rec.signing_address, tx: TX[i], reply_hash: replyHash, legacy: LEGACY[i] ?? null,
       local: { ok: v.ok, passed: v.checks.filter((c) => c.ok).length, total: v.checks.length, checks: v.checks.map((c) => ({ name: c.name, ok: c.ok })) },
       onchain: proof ? { ok: proof.signer === rec.signing_address.toLowerCase() && proof.response_hash === rec.response_hash, signer: proof.signer }
         : { ok: false, error: onchainErr ?? 'no proof on-chain' },

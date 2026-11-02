@@ -1,0 +1,48 @@
+{
+  "network": "testnet",
+  "token_id": "1",
+  "petri": "v2.petri-1793597952.testnet",
+  "mpc": "v1.signer-prod.testnet",
+  "path": "pet-1",
+  "derived_key": "secp256k1:4P3mZPz4weEhE41KmkVdPStpTa2L8mvjP8K9FmWCt7wkUgfM5our2nbex6w3kBZEUPjppe18Vwwcn7Lr7TrmZZqi",
+  "evm_address": "0x5a34926DdBbcC7b64F6f9BC4eaC59779B1DA2615",
+  "evm_chain": {
+    "name": "Ethereum Sepolia",
+    "chainId": 11155111,
+    "rpc": "https://ethereum-sepolia-rpc.publicnode.com",
+    "explorer": "https://sepolia.etherscan.io"
+  },
+  "balance_wei": "0",
+  "quote": {
+    "dry": true,
+    "amountIn": "0.001",
+    "amountOut": "0.550647158220718560697842",
+    "amountOutUsd": "2.274172763452",
+    "timeEstimate": 37,
+    "depositAddress": null,
+    "recipient": "anonymusk.near",
+    "refundTo": "0x5a34926DdBbcC7b64F6f9BC4eaC59779B1DA2615"
+  },
+  "sweep": {
+    "unsigned": "0x02e283aa36a7800126825208945a34926ddbbcc7b64f6f9bc4eac59779b1da26158080c0",
+    "hash": "01dc345f9a856a73bb05f7675bebe2e7ce993ee9b288774b37a1e93e49e36c8c"
+  },
+  "signed": {
+    "near_tx": "7TueePpC1tA4skZkQy2fATJRHZfGEtDcuBLjEswtSDXk",
+    "mpc_signature": {
+      "big_r": {
+        "affine_point": "02076cbca4f8c6a7eb4efcbed18177ab9356a63ba41434a1ed89ae2bb2a3772bfb"
+      },
+      "recovery_id": 1,
+      "s": {
+        "scalar": "3c8b654a0c16284317fc2aed036edb489807d19956332fbdb6858b66d541bf82"
+      },
+      "scheme": "Secp256k1"
+    },
+    "unsigned": "0x02e283aa36a7800126825208945a34926ddbbcc7b64f6f9bc4eac59779b1da26158080c0",
+    "raw": "0x02f86583aa36a7800126825208945a34926ddbbcc7b64f6f9bc4eac59779b1da26158080c001a0076cbca4f8c6a7eb4efcbed18177ab9356a63ba41434a1ed89ae2bb2a3772bfba03c8b654a0c16284317fc2aed036edb489807d19956332fbdb6858b66d541bf82",
+    "from": "0x5a34926DdBbcC7b64F6f9BC4eaC59779B1DA2615",
+    "at": "2026-11-02T07:08:43.869Z"
+  },
+  "quoted_at": "2026-11-02T07:08:35.179Z"
+}

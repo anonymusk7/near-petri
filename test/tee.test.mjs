@@ -13,7 +13,7 @@ const rec1 = load('reply-1.json');
 const ev1 = load(rec1.evidence);
 
 test('all recorded real replies verify offline', () => {
-  assert.ok(replies.length >= 1 && replies.length <= 4);
+  assert.ok(replies.length >= 1 && replies.length <= 6);
   for (const f of replies) {
     const rec = load(f);
     const v = verifyRecord(rec, load(rec.evidence));

@@ -41,6 +41,9 @@ enum StorageKey {
     Replies,
     TeeProofs,
     PetAccounts,
+    ArenaRounds,
+    ArenaUsed,
+    ArenaWins,
 }
 
 #[near(serializers = [borsh])]
@@ -81,6 +84,8 @@ pub struct PetView {
     /// It holds a function-call key that can only call `charge_verified` on this
     /// contract, and the contract only accepts charges for this pet from it.
     pub pet_account: Option<AccountId>,
+    /// Arena rounds this pet has won.
+    pub arena_wins: u32,
 }
 
 #[near(serializers = [json])]
@@ -123,9 +128,16 @@ pub struct Petri {
     tee_proofs: LookupMap<String, TeeProof>,
     /// token_id -> the pet's own sub-account (see `mint_pet_with_account`).
     pet_accounts: LookupMap<TokenId, AccountId>,
+    /// Settled arena rounds by id, the reply hashes already used in one, and wins per pet.
+    arena_rounds: LookupMap<u64, ArenaRound>,
+    arena_count: u64,
+    arena_used: LookupMap<String, u64>,
+    arena_wins: LookupMap<TokenId, u32>,
+    /// NEAR Chain Signatures MPC contract (v1.signer-prod.testnet / v1.signer).
+    mpc_id: AccountId,
 }
 
-/// v2 state layout (before `pet_accounts`), for `migrate`.
+/// Previous state layout (before arena + chain signatures), for `migrate`.
 #[near(serializers = [borsh])]
 pub struct PetriV2 {
     tokens: NonFungibleToken,
@@ -140,6 +152,65 @@ pub struct PetriV2 {
     treasury: NearToken,
     tee_signers: Vec<TeeSigner>,
     tee_proofs: LookupMap<String, TeeProof>,
+    pet_accounts: LookupMap<TokenId, AccountId>,
+}
+
+/// The exact system prompt every Petri reply must be built on. The contract
+/// rebuilds it from the pet's on-chain name + personality and requires the TEE-
+/// signed request to use it verbatim, so a reply made for one pet can never be
+/// charged to (or entered into the arena for) another.
+pub fn system_prompt(name: &str, prompt: &str) -> String {
+    format!("You are {name}, a Petri pet living on NEAR. {prompt} Answer in at most two short sentences.")
+}
+
+/// The arena's published winner rule, stored with every round.
+pub const ARENA_RULE: &str = "1) reply contains the challenge word (case-insensitive) 2) fewer characters 3) lower token id";
+
+/// One pet's entry as submitted to `arena_settle`: the exact TEE-signed bytes.
+#[near(serializers = [json])]
+pub struct ArenaEntryInput {
+    pub token_id: TokenId,
+    pub request: String,
+    pub response: String,
+}
+
+#[near(serializers = [borsh, json])]
+#[derive(Clone, Debug, PartialEq)]
+pub struct ArenaEntry {
+    pub token_id: TokenId,
+    pub reply_hash: String,
+    pub has_word: bool,
+    pub chars: u32,
+}
+
+#[near(serializers = [borsh, json])]
+#[derive(Clone, Debug, PartialEq)]
+pub struct ArenaRound {
+    pub id: u64,
+    pub question_hash: String,
+    pub challenge: String,
+    pub rule: String,
+    pub entries: Vec<ArenaEntry>,
+    pub winner: TokenId,
+    pub settled_by: AccountId,
+    pub at_ns: U64,
+}
+
+/// Pure winner rule: index of the winning entry. Higher is better on
+/// (has_word, -chars, -token_id). Deterministic and reproducible by anyone.
+pub fn arena_winner(entries: &[ArenaEntry]) -> usize {
+    let key = |e: &ArenaEntry| (e.has_word, std::cmp::Reverse(e.chars), std::cmp::Reverse(e.token_id.parse::<u64>().unwrap_or(u64::MAX)));
+    (0..entries.len()).max_by_key(|&i| key(&entries[i])).unwrap()
+}
+
+/// Last user message of a chat-completions request.
+pub fn user_question(req: &near_sdk::serde_json::Value) -> Option<String> {
+    req["messages"].as_array()?.iter().rev().find(|m| m["role"] == "user")?["content"].as_str().map(str::to_string)
+}
+
+/// The reply text of a chat-completions response.
+pub fn reply_text(resp: &near_sdk::serde_json::Value) -> Option<String> {
+    resp["choices"][0]["message"]["content"].as_str().map(str::to_string)
 }
 
 #[near(serializers = [borsh, json])]
@@ -194,19 +265,25 @@ impl Petri {
             tee_signers: Vec::new(),
             tee_proofs: LookupMap::new(StorageKey::TeeProofs),
             pet_accounts: LookupMap::new(StorageKey::PetAccounts),
+            arena_rounds: LookupMap::new(StorageKey::ArenaRounds), arena_count: 0,
+            arena_used: LookupMap::new(StorageKey::ArenaUsed), arena_wins: LookupMap::new(StorageKey::ArenaWins),
+            mpc_id: default_mpc(),
         }
     }
 
-    /// One-shot state upgrade from the v2 layout (adds `pet_accounts`).
+    /// One-shot state upgrade from the previous layout (adds arena + MPC config).
     #[private]
     #[init(ignore_state)]
     pub fn migrate() -> Self {
-        let o: PetriV2 = env::state_read().unwrap_or_else(|| env::panic_str("no v2 state"));
+        let o: PetriV2 = env::state_read().unwrap_or_else(|| env::panic_str("no previous state"));
         Self {
             tokens: o.tokens, metadata: o.metadata, owner_id: o.owner_id, backend_id: o.backend_id,
             sleep_threshold: o.sleep_threshold, hunger_ns: o.hunger_ns, pets: o.pets, replies: o.replies,
             next_id: o.next_id, treasury: o.treasury, tee_signers: o.tee_signers, tee_proofs: o.tee_proofs,
-            pet_accounts: LookupMap::new(StorageKey::PetAccounts),
+            pet_accounts: o.pet_accounts,
+            arena_rounds: LookupMap::new(StorageKey::ArenaRounds), arena_count: 0,
+            arena_used: LookupMap::new(StorageKey::ArenaUsed), arena_wins: LookupMap::new(StorageKey::ArenaWins),
+            mpc_id: default_mpc(),
         }
     }
 
@@ -382,8 +459,8 @@ impl Petri {
             .unwrap_or_else(|_| env::panic_str("request is not JSON"));
         let model = req["model"].as_str().unwrap_or_else(|| env::panic_str("request has no model")).to_string();
         let sys = req["messages"][0]["content"].as_str().unwrap_or("");
-        require!(req["messages"][0]["role"] == "system" && sys.contains(prompt.as_str()),
-                 "request system prompt does not contain the pet's prompt");
+        require!(req["messages"][0]["role"] == "system" && sys == system_prompt(&pet.name, &prompt),
+                 "request system prompt is not this pet's own prompt (name + personality)");
         let request_hash = hex(&env::sha256(request.as_bytes()));
         let text = format!("{model}:{request_hash}:{response_hash}");
         let signer = recover_eip191(&text, &signature).unwrap_or_else(|| env::panic_str("bad TEE signature"));
@@ -395,7 +472,107 @@ impl Petri {
         rec
     }
 
+    /// Pet owner gives the pet a new personality (sha256 of the prompt text).
+    /// Future replies must be built on it; past receipts stay as they were.
+    pub fn set_prompt(&mut self, token_id: TokenId, prompt_hash: String) -> PetView {
+        require!(self.owner_of(&token_id) == env::predecessor_account_id(), "only the pet owner can change its prompt");
+        require!(is_valid_hash(&prompt_hash), "prompt_hash must be 64 lowercase hex chars (sha256)");
+        self.pet_mut(&token_id).prompt_hash = prompt_hash.clone();
+        env::log_str(&format!("pet {token_id} prompt_hash -> {prompt_hash}"));
+        self.get_pet(token_id).unwrap()
+    }
+
+    // ---------- arena ----------
+
+    /// Permissionless: settle an arena round between two pets that answered the
+    /// SAME question. For each entry the contract re-hashes the exact request and
+    /// response bytes and requires that this reply was already charged to that pet
+    /// via `charge_verified` (i.e. its NEAR AI TEE signature was ecrecovered on-chain
+    /// and its system prompt is that pet's own). The winner follows `ARENA_RULE`,
+    /// computed here from the signed reply text, and the round is stored on-chain.
+    /// Attach a little NEAR for storage; the rest is refunded.
+    #[payable]
+    pub fn arena_settle(&mut self, challenge: String, entries: Vec<ArenaEntryInput>) -> ArenaRound {
+        require!(entries.len() == 2, "an arena round has exactly two entries");
+        require!(entries[0].token_id != entries[1].token_id, "a pet cannot fight itself");
+        require!(!challenge.is_empty() && challenge.len() <= 32 && challenge.chars().all(|c| c.is_alphanumeric()),
+                 "challenge must be one word (1-32 alphanumeric chars)");
+        let word = challenge.to_lowercase();
+        let before = env::storage_usage();
+        let mut question: Option<String> = None;
+        let mut out = Vec::new();
+        for e in &entries {
+            let req: near_sdk::serde_json::Value = near_sdk::serde_json::from_str(&e.request)
+                .unwrap_or_else(|_| env::panic_str("request is not JSON"));
+            let resp: near_sdk::serde_json::Value = near_sdk::serde_json::from_str(&e.response)
+                .unwrap_or_else(|_| env::panic_str("response is not JSON"));
+            let model = req["model"].as_str().unwrap_or_else(|| env::panic_str("request has no model"));
+            let request_hash = hex(&env::sha256(e.request.as_bytes()));
+            let response_hash = hex(&env::sha256(e.response.as_bytes()));
+            let reply_hash = hex(&env::sha256(format!("{model}:{request_hash}:{response_hash}").as_bytes()));
+            let proof = self.tee_proofs.get(&reply_hash).unwrap_or_else(|| env::panic_str("entry is not a TEE-verified reply"));
+            require!(proof.request_hash == request_hash && proof.response_hash == response_hash, "entry bytes do not match the TEE proof");
+            let rec = self.replies.get(&reply_hash).unwrap_or_else(|| env::panic_str("entry was never charged"));
+            require!(rec.token_id == e.token_id, "entry reply belongs to a different pet");
+            require!(!self.arena_used.contains_key(&reply_hash), "reply already used in an arena round");
+            let q = user_question(&req).unwrap_or_else(|| env::panic_str("request has no user question"));
+            match &question { None => question = Some(q), Some(q0) => require!(*q0 == q, "both pets must answer the same question") }
+            let text = reply_text(&resp).unwrap_or_else(|| env::panic_str("response has no reply text"));
+            out.push(ArenaEntry { token_id: e.token_id.clone(), reply_hash, has_word: text.to_lowercase().contains(&word),
+                                  chars: text.trim().chars().count() as u32 });
+        }
+        let question = question.unwrap();
+        require!(question.to_lowercase().contains(&word), "the question must state the challenge word");
+        let winner = out[arena_winner(&out)].token_id.clone();
+        let id = self.arena_count;
+        self.arena_count += 1;
+        for e in &out { self.arena_used.insert(e.reply_hash.clone(), id); }
+        let wins = self.arena_wins.get(&winner).copied().unwrap_or(0) + 1;
+        self.arena_wins.insert(winner.clone(), wins);
+        let round = ArenaRound { id, question_hash: hex(&env::sha256(question.as_bytes())), challenge, rule: ARENA_RULE.to_string(),
+                                 entries: out, winner: winner.clone(), settled_by: env::predecessor_account_id(),
+                                 at_ns: U64(env::block_timestamp()) };
+        self.arena_rounds.insert(id, round.clone());
+        self.arena_rounds.flush(); self.arena_used.flush(); self.arena_wins.flush();
+        let cost = env::storage_byte_cost().as_yoctonear() * env::storage_usage().saturating_sub(before) as u128;
+        let dep = env::attached_deposit().as_yoctonear();
+        require!(dep >= cost, format!("attach at least {cost} yocto for arena storage"));
+        if dep > cost { Promise::new(env::predecessor_account_id()).transfer(NearToken::from_yoctonear(dep - cost)); }
+        env::log_str(&format!("EVENT_JSON:{{\"standard\":\"petri\",\"version\":\"1.0.0\",\"event\":\"arena_settled\",\"data\":{{\"id\":{id},\"winner\":\"{winner}\"}}}}"));
+        round
+    }
+
+    pub fn get_arena(&self, id: U64) -> Option<ArenaRound> { self.arena_rounds.get(&id.0).cloned() }
+    pub fn get_arena_count(&self) -> U64 { U64(self.arena_count) }
+
+    // ---------- chain signatures: every pet has addresses on other chains ----------
+
+    /// Derivation path of the pet's foreign (EVM/BTC/...) addresses under this
+    /// contract: derived by the NEAR MPC network from (this contract, path).
+    pub fn foreign_path(&self, token_id: TokenId) -> String { format!("pet-{token_id}") }
+    pub fn get_mpc(&self) -> AccountId { self.mpc_id.clone() }
+
+    /// The pet's NFT owner asks the MPC network to sign a 32-byte payload (e.g. an
+    /// EIP-1559 tx hash sweeping tips from the pet's derived address to a 1Click
+    /// deposit address). Whoever owns the pet NFT controls its foreign addresses,
+    /// so they move with the NFT. Attach >= 1 yocto (forwarded to the MPC); use 300 Tgas.
+    #[payable]
+    pub fn request_foreign_signature(&mut self, token_id: TokenId, payload_hex: String) -> Promise {
+        require!(self.owner_of(&token_id) == env::predecessor_account_id(), "only the pet owner can sign for its foreign addresses");
+        require!(payload_hex.len() == 64 && is_valid_hash(&payload_hex), "payload must be 32 bytes lowercase hex");
+        let dep = env::attached_deposit();
+        require!(dep.as_yoctonear() >= 1, "attach at least 1 yoctoNEAR for the MPC fee");
+        let path = self.foreign_path(token_id.clone());
+        env::log_str(&format!("foreign_sign pet={token_id} path={path} payload={payload_hex}"));
+        Promise::new(self.mpc_id.clone()).function_call(
+            "sign".to_string(),
+            near_sdk::serde_json::to_vec(&near_sdk::serde_json::json!({"request": {"path": path, "payload_v2": {"Ecdsa": payload_hex}, "domain_id": 0}})).unwrap(),
+            dep, Gas::from_tgas(250))
+    }
+
     // ---------- admin ----------
+
+    pub fn set_mpc(&mut self, mpc_id: AccountId) { self.assert_owner(); self.mpc_id = mpc_id; }
 
     /// Owner registers a TEE signer address after verifying the model's attestation
     /// report off-chain (`pnpm preflight`: TDX quote, report_data binding, NVIDIA NRAS).
@@ -453,6 +630,7 @@ impl Petri {
             last_reply_hash: pet.last_reply_hash.clone(),
             revives: pet.revives,
             asleep: self.asleep(&token_id),
+            arena_wins: self.arena_wins.get(&token_id).copied().unwrap_or(0),
             pet_account: self.pet_accounts.get(&token_id).cloned(),
             token_id,
         })
@@ -549,6 +727,11 @@ impl NonFungibleTokenEnumeration for Petri {
 #[near]
 impl NonFungibleTokenMetadataProvider for Petri {
     fn nft_metadata(&self) -> NFTContractMetadata { self.metadata.get().unwrap() }
+}
+
+fn default_mpc() -> AccountId {
+    let testnet = env::current_account_id().as_str().ends_with(".testnet");
+    (if testnet { "v1.signer-prod.testnet" } else { "v1.signer" }).parse().unwrap()
 }
 
 #[cfg(test)]

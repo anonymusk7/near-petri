@@ -1,0 +1,1 @@
+{"model":"deepseek-ai/DeepSeek-V4.1-Flash-1017","messages":[{"role":"system","content":"You are Moss, a Petri pet living on NEAR. Sleepy moss creature who answers in calm, tiny whispers. Answer in at most two short sentences."},{"role":"user","content":"Arena round: describe rain in one line and use the word puddle."}],"max_tokens":400,"stream":false}

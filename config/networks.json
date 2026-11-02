@@ -1,0 +1,32 @@
+{
+  "_doc": "Tip-from-any-chain config. PETRI_NETWORK=testnet (default) or mainnet. Going mainnet is ONLY this file + the flag; mainnet runs also require --i-approve-mainnet.",
+  "testnet": {
+    "nearRpc": ["https://rpc.testnet.fastnear.com", "https://rpc.testnet.near.org"],
+    "petri": "v2.petri-1793597952.testnet",
+    "petOwner": "petri-1793597952.testnet",
+    "mpc": "v1.signer-prod.testnet",
+    "evm": { "name": "Ethereum Sepolia", "chainId": 11155111, "rpc": "https://ethereum-sepolia-rpc.publicnode.com", "explorer": "https://sepolia.etherscan.io" },
+    "oneclick": {
+      "_doc": "1Click has no testnet: on testnet we fetch a mainnet dry:true quote (no deposit address, nothing can move) and sweep to the pet's own address.",
+      "dry": true,
+      "originAsset": "nep141:base.omft.near",
+      "originDecimals": 18,
+      "destinationAsset": "nep141:wrap.near",
+      "recipient": "anonymusk.near"
+    }
+  },
+  "mainnet": {
+    "nearRpc": ["https://rpc.mainnet.fastnear.com", "https://rpc.mainnet.near.org"],
+    "petri": "petri.anonymusk.near",
+    "petOwner": "anonymusk.near",
+    "mpc": "v1.signer",
+    "evm": { "name": "Base", "chainId": 8453, "rpc": "https://mainnet.base.org", "explorer": "https://basescan.org" },
+    "oneclick": {
+      "dry": false,
+      "originAsset": "nep141:base.omft.near",
+      "originDecimals": 18,
+      "destinationAsset": "nep141:wrap.near",
+      "recipient": "pet-account"
+    }
+  }
+}

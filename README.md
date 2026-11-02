@@ -11,15 +11,16 @@ Everything below runs offline except step 4 (read-only NEAR RPC). No API key nee
 ```
 pnpm i
 ```
-1. Run `pnpm test`. You should see `58 passed` for Rust (including 7 pet-account tests and 9 `charge_verified` tests that ecrecover a **real** recorded NEAR AI signature and reject a tampered response, a tampered request, a wrong prompt, an unregistered signer, a non-backend caller and a replay) and `pass 16` for JS. The JS tests include offline re-verification of the **real** recorded NEAR AI evidence and a full replay of the TEE client against the recorded bytes.
-2. Run `pnpm verify examples/recorded/reply-1.json`. You should see 8 ✓ checks (hashes, request shape, Intel TDX quotes via dcap-qvl, NVIDIA NRAS GPU verdict, preflight-before-completion, provider_tee signature, Petri receipt) and `=> VALID` (exit 0). `pnpm verify examples/recorded/reply-[0-9].json` checks all four (exit 0).
+1. Run `pnpm test`. You should see `79 passed` for Rust and `pass 21` for JS. The Rust tests include `charge_verified` tests that ecrecover a **real** recorded NEAR AI signature, own-prompt tests (`real_mochi_reply_cannot_be_charged_to_moss` replays Mochi's real reply-5 against Moss and expects a rejection), arena tests (`real_arena_round_moss_wins` settles the real reply-5 against reply-6), and Chain Signatures tests. The JS tests re-verify the real recorded NEAR AI evidence offline and check the real MPC signature in `examples/tip/tip-testnet.json` (`test/tip.test.mjs`).
+2. Run `pnpm verify examples/recorded/reply-1.json`. You should see 8 ✓ checks (hashes, request shape, Intel TDX quotes via dcap-qvl, NVIDIA NRAS GPU verdict, preflight-before-completion, provider_tee signature, Petri receipt) and `=> VALID` (exit 0). `pnpm verify examples/recorded/reply-[0-9].json` checks all six (exit 0).
 3. Run `pnpm verify examples/recorded/reply-1.tampered.json` (same reply with the text swapped for a scam message). You should see `✗ response bytes hash to response_hash`, `✗ provider_tee signature … signature text does not match`, and `=> INVALID` (exit 1).
 4. Run `pnpm demo:testnet`. It reads pet #0 "Mochi" from `petri-1793597952.testnet` over RPC: balance ≈ 0.483 NEAR, `replies 3`. For each recorded reply it should show `on-chain get_reply: index N, cost 0.0011.. NEAR` with ✓ on-chain receipt matches record and ✓ TEE evidence verifies. The last line is `=> ALL RECORDED REPLIES CHARGED ON-CHAIN AND TEE-VERIFIED`.
 5. Run `pnpm chat:mock`. You should see 3 offline mock replies from "Mochi", the balance going down after each one, and `verify=true`.
 6. Optional, needs a NEAR AI key, free: `NEAR_AI_API_KEY=... pnpm preflight`. This runs the live attestation (no completion is sent) and prints gateway and model signers with `TCB UpToDate` and `GPU 8xHOPPER NRAS overall=true`.
 
-7. Run `pnpm demo:v2`. It reads `v2.petri-1793597952.testnet` over RPC. You should see the registered TEE signer `0xfe00…337e`, pet #0 Mochi with `replies 3`, and for each of the 4 real replies `✓ on-chain ecrecover → 0xfe0071895500a9755c18044948ab4f4e1a7f337e`, then pet #1 Moss with its own account `pet-1.v2.petri-1793597952.testnet` and exactly one key, `✓ only charge_verified on v2.petri-1793597952.testnet, no full-access key`. The last line is `=> EVERY CHARGED REPLY CARRIES A NEAR AI TEE SIGNATURE VERIFIED BY THE CONTRACT`.
-8. Run `pnpm web` and open http://localhost:5174. You should see pets Mochi #0 and Moss #1 (live testnet balances; Moss shows **own account** and **key: charge_verified only**), and the recorded replies with a green **TEE-verified** badge. Hover the badge to see 8/8 local checks plus the on-chain ecrecover result, and click **tx** to open the testnet explorer. New messages use the mock brain and are labelled **mock brain · unsigned** (no credits, nothing on-chain). Click **Starve** to see the asleep alert with the input disabled, then **Revive**. These sleep buttons are a local simulation only. If you are offline, run `node web/server.mjs --snapshot`.
+7. Run `pnpm demo:v2` (read-only RPC, no keys). Expect `✓ on-chain ecrecover → 0xfe00…337e` for each of the 6 real replies. Reply-4 also shows `⚠ built on Mochi's prompt … v3 now REJECTS this` (this is the bug fixed in round 3, kept visible on purpose). Then `arena #0 "puddle"` with `on-chain winner: pet #1 Moss | recomputed locally: pet #1 ✓`, Moss's single `charge_verified`-only key, and `pet #1 EVM address via Chain Signatures: 0x5a34…2615 ✓; MPC-signed sweep … recovers to 0x5a34…2615 ✓`. The last line is `=> EVERY CHARGED REPLY IS TEE-VERIFIED ON-CHAIN, THE ARENA RESULT REPRODUCES, THE PET SIGNS ON OTHER CHAINS`.
+8. Run `pnpm web` and open http://localhost:5174. You should see pets Mochi #0 and Moss #1 (live testnet balances; Moss shows **own account** and **key: charge_verified only**), and the recorded replies with a green **TEE-verified** badge. Hover the badge to see 8/8 local checks plus the on-chain ecrecover result, and click **tx** to open the testnet explorer. New messages use the mock brain and are labelled **mock brain · unsigned** (no credits, nothing on-chain). Click **Starve** to see the asleep alert with the input disabled, then **Revive**. These sleep buttons are a local simulation only. You should also see an **Arena #0 "puddle"** card with both TEE-signed answers, the 🏆 on Moss, the rule text and the settle tx; a **1 arena win** badge on Moss; and a **tip from any chain** EVM address on each pet. Moss's reply-4 carries a **legacy v2 receipt** badge. Offline, the server falls back to `web/snapshot.json` (refresh it with `node web/server.mjs --snapshot`).
+9. Optional, free, read-only: run `pnpm tip:prepare 1`. It derives pet #1's Sepolia address from the MPC signer, reads its balance, gets a 1Click `dry:true` quote (Base ETH → NEAR to `anonymusk.near`, no deposit address is created) and writes `examples/tip/tip-testnet.json`. Nothing is signed or broadcast unless you pass `--sign` (testnet, owner key) and nothing is ever broadcast to an EVM chain.
 
 ## On-chain TEE verification (v2: `charge_verified`)
 In v1 the contract trusted the backend's `reply_hash`. In v2 **the contract itself verifies the NEAR AI Cloud TEE signature** before it lets the pet pay for a thought:
@@ -41,6 +42,23 @@ Cost: about **3.07 Tgas** per verified reply (≈0.0003 NEAR).
 
 Limits: the response *body* is not sent on-chain (only its hash, which is signed). Body-to-hash is checked off-chain by `pnpm verify`. Attestation itself is verified off-chain; the on-chain trust root is the owner-registered signer.
 
+
+## Round 3 (v3 contract, same address)
+Upgraded in place with `migrate` (tx `ugsFmPKcsqBNJxQWHW78tz3cC1E8ZHjipwC3fs4Wqp2`). Every pet, reply and proof is kept.
+
+**A pet is charged only for its own prompt.** The v2 contract checked that the system message *contained* the pet's prompt, and Moss had been minted with Mochi's prompt hash, so reply-4 (Mochi's personality) was billed to Moss. v3 requires the system message to be exactly `You are {name}, a Petri pet living on NEAR. {prompt} Answer in at most two short sentences.` with the pet's own name, and `sha256(prompt) == prompt_hash`. Otherwise it panics with `request system prompt is not this pet's own prompt (name + personality)`. `set_prompt` (NFT owner only) gave Moss its own prompt (`e9947b34…`, tx `23MFXA2fkdPgNpmirLJt6kcxZjZYrCqszfUEyPux71jV`), and a fresh real TEE reply was recorded for it (reply-6, ≈$0.0001). Replaying Mochi's reply-5 against Moss is now rejected on-chain.
+
+**Arena.** `arena_settle(challenge, entries)` is permissionless and needs no trust in its caller. For each entry the contract re-hashes the exact request/response bytes, requires the stored TEE proof and a reply record for *that* pet, requires both answers to the same user question containing the challenge word, and refuses replies that were already used. The winner is then computed on-chain by a pure, published rule: `1) reply contains the challenge word (case-insensitive) 2) fewer characters 3) lower token id`. The round is stored (`get_arena`), `arena_wins` is incremented, and an `arena_settled` NEP-297 event is emitted.
+
+| Round 3 testnet | tx |
+| - | - |
+| reply-5 (Mochi) `charge_verified` by the backend | `3aB2ktZ4Dox99TiDti8BLZrFjsAmFmMi2dCZjzZZs1LW` |
+| reply-6 (Moss) `charge_verified` by `pet-1.…` itself | `2xPs1k2q684wF6GVLCQ2Nt1TfPvjb45VuiXytZnyFfA2` |
+| `arena_settle("puddle", [reply-5, reply-6])` → winner Moss (63 vs 78 chars) | `3WENtHQS3q6Cv9qGscGLw3fDPaxioGfYndXZVdsUdJso` |
+| Negative: reply-5 charged to Moss → `…not this pet's own prompt…` | rejected on-chain |
+| `request_foreign_signature(1, sweep hash)` → MPC `v1.signer-prod.testnet` signs for pet #1 | `7TueePpC1tA4skZkQy2fATJRHZfGEtDcuBLjEswtSDXk` |
+
+**Tip from any chain (Chain Signatures + 1Click).** Each pet has a foreign address derived by the NEAR MPC network from `(petri contract, "pet-<id>")`. Pet #1 is `0x5a34926DdBbcC7b64F6f9BC4eaC59779B1DA2615` on any EVM chain. Anyone can tip it there. `request_foreign_signature(token_id, payload)` (NFT owner only, 1 yocto + MPC fee refunded) asks the MPC to sign a sweep tx for that address. On mainnet the sweep sends to a 1Click deposit address, which delivers NEAR to the pet. On testnet, 1Click has no testnet, so we use a `dry:true` quote and a 0-value Sepolia self-transfer. The real MPC signature recovers to the pet's address, and we don't broadcast it. Switching to mainnet is config only: `PETRI_NETWORK=mainnet` picks the `mainnet` block of `config/networks.json` (MPC `v1.signer`, Base, `dry:false`), and `lib/tip.mjs` refuses mainnet signing unless `--i-approve-mainnet` is passed. Nothing on mainnet has been run.
 
 ## Each pet is its own NEAR account (`mint_pet_with_account`)
 `mint_pet_with_account(name, prompt_hash, pet_key)` mints the NFT **and** creates `pet-<id>.<contract>`:
@@ -106,7 +124,7 @@ Real NEAR AI usage: **3 completions, 210 input + 217 output tokens = $0.000323**
 - `revive(token_id)` (payable, anyone): only works on a sleeping pet, and the tip must lift its balance to at least the threshold.
 - Admin: `set_backend`, `set_params`, `withdraw_treasury` (charged fees go to the operator, who pays NEAR AI Cloud). Views: `get_pet`, `get_reply`, `get_config`, plus the standard `nft_*` methods.
 - NEAR JSON-RPC `query/call_function` view calls (`scripts/demo-testnet.mjs`); `near-cli-rs` for deploy and calls.
-- **Stub:** per-pet sub-accounts (`pet-<id>.<contract>`). Mint logs and returns the planned account (`pet_account`), but balances are still held and accounted for inside the contract.
+- Per-pet sub-accounts with a function-call-only key (`mint_pet_with_account`), **Chain Signatures** (`v1.signer-prod.testnet`, `request_foreign_signature`), **NEAR Intents 1Click** quotes (`lib/oneclick.mjs`, `dry:true`), NEP-297 events.
 
 ## Run
 ```
@@ -119,15 +137,20 @@ pnpm chat:mock               # offline chat demo
 pnpm build:contract:deploy   # the deployed wasm (target/mvp/...)
 # real TEE path (needs NEAR_AI_API_KEY in env; key is never written to disk by this repo):
 pnpm preflight               # free: live attestation only
-pnpm record:tee "msg"        # PAID: refuses beyond 4 recorded replies
+pnpm record:tee "msg"        # PAID: refuses beyond 6 recorded replies
+pnpm record:arena            # PAID (~$0.0003): the two arena replies (already recorded)
+pnpm tip:prepare 1           # free: MPC address + 1Click dry quote; --sign = testnet MPC signature
 ```
 `MOCK_AI=1` is the default, so tests and demos never call the paid API.
 
 ## Honest limits
-- Inference goes through the backend, because the API key lives there. "The pet pays" is enforced by the contract's accounting (`charge` is backend-only) and is publicly auditable: every on-chain `reply_hash` opens to a TEE-signed request/response. The contract does not verify the TEE signature on-chain.
+- Inference goes through the backend, because the API key lives there. `charge_verified` verifies the TEE signature on-chain, but the attestation behind the registered signer is checked off-chain (`pnpm preflight`).
+- Reply-4 (v2 era) stays on-chain as a legacy receipt billed to the wrong pet. v3 blocks new ones, and history is not rewritten.
+- Arena: answers are judged by a mechanical rule, not by quality. Rounds are settled from recorded replies, and both pets must answer the same question. The first round was settled by the backend account, though anyone could have settled it.
+- Chain Signatures: whoever owns the pet NFT controls its foreign addresses, so the addresses move with the NFT, and the contract owner can change `mpc_id`. Testnet only. No EVM tx was broadcast, and the mainnet path is untested.
 - Per NEAR's docs, instances of one model share a signing key, so a matching `provider_tee` signer does not prove that the attested instance and the serving instance are the same machine. A `provider_tee` signature also isn't bound to the gateway or TLS evidence. Our TCB/measurement policy is "UpToDate + the checks above", with no allowlist of compose hashes yet.
 - The NRAS verdict is re-checked offline by its JWT signature (recorded JWKS). The GPU evidence itself is only evaluated by NVIDIA at record time.
-- The sub-account per pet is a stub. Arena, episodes, 1Click tips, and a function-call-only backend key are planned (see `SPEC.md`).
+- Episodes are still planned (see `SPEC.md`).
 
 ## Related projects by the same author (Q-015)
 These are independent NEAR HACKATHON projects by the same author:

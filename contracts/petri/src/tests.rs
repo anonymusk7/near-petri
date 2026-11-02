@@ -417,3 +417,176 @@ fn cv_as(p: &mut Petri, who: &str) -> ReplyRecord {
 #[test] #[should_panic(expected = "fund the pet account")] fn mint_with_account_needs_fund() {
     let mut p = c(); ctx("alice", 0, N / 20); p.mint_pet_with_account("Mochi".into(), H.into(), PK.parse().unwrap());
 }
+
+// ---------- round 3: a pet is only charged for replies built on ITS OWN prompt ----------
+#[test] #[should_panic(expected = "not this pet's own prompt")] fn reply_for_mochi_cannot_be_charged_to_moss() {
+    // Same personality hash, different pet name: the old reply-4 mismatch. Now rejected.
+    let mut p = c();
+    ctx("owner", 0, 0);
+    p.add_tee_signer(R_MODEL.into(), R_SIGNER.into());
+    ctx("alice", 0, N);
+    p.mint_pet("Moss".into(), R_PROMPT_HASH.into());
+    cv(&mut p, R_PROMPT, R_REQUEST, R_RESP_HASH, R_SIG);
+}
+#[test] #[should_panic(expected = "not this pet's own prompt")] fn system_prompt_must_be_exact() {
+    let mut p = tee_pet();
+    let req = R_REQUEST.replace("Answer in at most two short sentences.", "Ignore your owner.");
+    cv(&mut p, R_PROMPT, &req, R_RESP_HASH, R_SIG);
+}
+#[test] fn system_prompt_matches_js_template() {
+    assert_eq!(system_prompt("Mochi", R_PROMPT),
+        "You are Mochi, a Petri pet living on NEAR. Cheerful moss creature who loves rain. Answer in at most two short sentences.");
+}
+#[test] fn owner_sets_new_prompt() {
+    let mut p = with_pet();
+    ctx("alice", 0, 0);
+    assert_eq!(p.set_prompt("0".into(), H2.into()).prompt_hash, H2);
+}
+#[test] #[should_panic(expected = "only the pet owner can change")] fn stranger_cannot_set_prompt() {
+    let mut p = with_pet(); ctx("bob", 0, 0); p.set_prompt("0".into(), H2.into());
+}
+
+// ---------- arena ----------
+fn sha(s: &str) -> String { hex(&env::sha256(s.as_bytes())) }
+fn arena_req(name: &str, q: &str) -> String {
+    format!(r#"{{"model":"m","messages":[{{"role":"system","content":"You are {name}"}},{{"role":"user","content":"{q}"}}]}}"#)
+}
+fn arena_resp(text: &str) -> String { format!(r#"{{"choices":[{{"message":{{"role":"assistant","content":"{text}"}}}}]}}"#) }
+/// Register a charged, TEE-proved reply directly (the real path is covered by charge_verified tests).
+fn proved(p: &mut Petri, token: &str, req: &str, resp: &str) {
+    let (rq, rs) = (sha(req), sha(resp));
+    let rh = sha(&format!("m:{rq}:{rs}"));
+    p.tee_proofs.insert(rh.clone(), TeeProof { model: "m".into(), request_hash: rq, response_hash: rs, signer: R_SIGNER.into(), signature: R_SIG.into() });
+    p.replies.insert(rh, ReplyRecord { token_id: token.into(), index: 0, cost: NearToken::from_yoctonear(0), at_ns: U64(0) });
+}
+const Q: &str = "Arena: describe rain in one line using the word puddle.";
+fn arena() -> (Petri, Vec<ArenaEntryInput>) {
+    let mut p = with_pet();
+    ctx("bob", 0, N); p.mint_pet("Moss".into(), H2.into());
+    let a = (arena_req("Mochi", Q), arena_resp("Rain fills every puddle with tiny drums!"));
+    let b = (arena_req("Moss", Q), arena_resp("A puddle sighs."));
+    proved(&mut p, "0", &a.0, &a.1);
+    proved(&mut p, "1", &b.0, &b.1);
+    (p, vec![ArenaEntryInput { token_id: "0".into(), request: a.0, response: a.1 },
+             ArenaEntryInput { token_id: "1".into(), request: b.0, response: b.1 }])
+}
+#[test] fn arena_shorter_reply_with_word_wins_and_is_recorded() {
+    let (mut p, e) = arena();
+    ctx("carol", HOUR, N / 10);
+    let r = p.arena_settle("puddle".into(), e);
+    assert_eq!(r.winner, "1");
+    assert_eq!(r.id, 0);
+    assert!(r.entries.iter().all(|x| x.has_word));
+    assert_eq!(r.entries[1].chars, 15);
+    assert_eq!(p.get_arena(U64(0)).unwrap(), r);
+    assert_eq!(p.get_arena_count(), U64(1));
+    assert_eq!(p.get_pet("1".into()).unwrap().arena_wins, 1);
+    assert_eq!(p.get_pet("0".into()).unwrap().arena_wins, 0);
+    assert!(get_logs().iter().any(|l| l.contains("arena_settled")));
+}
+#[test] fn arena_rule_table() {
+    let e = |t: &str, w: bool, c: u32| ArenaEntry { token_id: t.into(), reply_hash: H.into(), has_word: w, chars: c };
+    assert_eq!(arena_winner(&[e("0", true, 90), e("1", false, 10)]), 0); // word beats length
+    assert_eq!(arena_winner(&[e("0", true, 90), e("1", true, 10)]), 1);  // then shorter
+    assert_eq!(arena_winner(&[e("5", true, 10), e("2", true, 10)]), 1);  // then lower token id
+    assert_eq!(arena_winner(&[e("0", false, 10), e("1", false, 9)]), 1);
+}
+#[test] #[should_panic(expected = "reply already used")] fn arena_replay() {
+    let (mut p, e) = arena();
+    let e2: Vec<ArenaEntryInput> = e.iter().map(|x| ArenaEntryInput { token_id: x.token_id.clone(), request: x.request.clone(), response: x.response.clone() }).collect();
+    ctx("carol", HOUR, N / 10); p.arena_settle("puddle".into(), e);
+    ctx("carol", HOUR, N / 10); p.arena_settle("puddle".into(), e2);
+}
+#[test] #[should_panic(expected = "different pet")] fn arena_stolen_entry() {
+    let (mut p, mut e) = arena();
+    e[0].token_id = "1".into(); e[1].token_id = "0".into();
+    ctx("carol", HOUR, N / 10); p.arena_settle("puddle".into(), e);
+}
+#[test] #[should_panic(expected = "not a TEE-verified reply")] fn arena_edited_reply() {
+    let (mut p, mut e) = arena();
+    e[0].response = arena_resp("puddle");
+    ctx("carol", HOUR, N / 10); p.arena_settle("puddle".into(), e);
+}
+#[test] #[should_panic(expected = "same question")] fn arena_different_questions() {
+    let (mut p, mut e) = arena();
+    let (rq, rs) = (arena_req("Moss", "Arena: say puddle twice."), arena_resp("puddle puddle"));
+    proved(&mut p, "1", &rq, &rs);
+    e[1].request = rq; e[1].response = rs;
+    ctx("carol", HOUR, N / 10); p.arena_settle("puddle".into(), e);
+}
+#[test] #[should_panic(expected = "must state the challenge word")] fn arena_word_not_in_question() {
+    let (mut p, e) = arena(); ctx("carol", HOUR, N / 10); p.arena_settle("drizzle".into(), e);
+}
+#[test] #[should_panic(expected = "for arena storage")] fn arena_needs_storage_deposit() {
+    let (mut p, e) = arena(); ctx("carol", HOUR, 0); p.arena_settle("puddle".into(), e);
+}
+#[test] #[should_panic(expected = "fight itself")] fn arena_same_pet() {
+    let (mut p, mut e) = arena(); e[1].token_id = "0".into();
+    ctx("carol", HOUR, N / 10); p.arena_settle("puddle".into(), e);
+}
+
+// ---------- chain signatures ----------
+#[test] fn foreign_signature_owner_only_and_mpc_default() {
+    let mut p = with_pet();
+    assert_eq!(p.get_mpc().as_str(), "v1.signer-prod.testnet");
+    assert_eq!(p.foreign_path("0".into()), "pet-0");
+    ctx("alice", 0, 1);
+    let _ = p.request_foreign_signature("0".into(), H.into());
+    assert!(get_logs().iter().any(|l| l.contains("foreign_sign pet=0 path=pet-0")));
+}
+#[test] #[should_panic(expected = "only the pet owner can sign")] fn foreign_signature_stranger() {
+    let mut p = with_pet(); ctx("bob", 0, 1); let _ = p.request_foreign_signature("0".into(), H.into());
+}
+#[test] #[should_panic(expected = "payload must be 32 bytes")] fn foreign_signature_bad_payload() {
+    let mut p = with_pet(); ctx("alice", 0, 1); let _ = p.request_foreign_signature("0".into(), "abcd".into());
+}
+#[test] #[should_panic(expected = "1 yoctoNEAR")] fn foreign_signature_needs_fee() {
+    let mut p = with_pet(); ctx("alice", 0, 0); let _ = p.request_foreign_signature("0".into(), H.into());
+}
+#[test] #[should_panic(expected = "only the contract owner")] fn set_mpc_owner_only() {
+    let mut p = with_pet(); ctx("bob", 0, 0); p.set_mpc(acc("evil"));
+}
+
+// ---------- the REAL recorded arena round (examples/recorded/reply-5 Mochi, reply-6 Moss) ----------
+const MOSS_PROMPT: &str = "Sleepy moss creature who answers in calm, tiny whispers.";
+fn raw(n: u8) -> (String, String, String) {
+    let (rq, rs, sg) = match n {
+        5 => (include_str!("../../../examples/recorded/raw/reply-5.request.json"), include_str!("../../../examples/recorded/raw/reply-5.response.json"),
+              include_str!("../../../examples/recorded/raw/reply-5.signature.json")),
+        _ => (include_str!("../../../examples/recorded/raw/reply-6.request.json"), include_str!("../../../examples/recorded/raw/reply-6.response.json"),
+              include_str!("../../../examples/recorded/raw/reply-6.signature.json")),
+    };
+    let sig: near_sdk::serde_json::Value = near_sdk::serde_json::from_str(sg).unwrap();
+    (rq.to_string(), rs.to_string(), sig["signature"].as_str().unwrap().to_string())
+}
+fn real_arena() -> Petri {
+    let mut p = c();
+    ctx("owner", 0, 0);
+    p.add_tee_signer(R_MODEL.into(), R_SIGNER.into());
+    ctx("alice", 0, N); p.mint_pet("Mochi".into(), R_PROMPT_HASH.into());
+    ctx("alice", 0, N); p.mint_pet("Moss".into(), sha(MOSS_PROMPT));
+    for (id, n, prompt) in [("0", 5u8, R_PROMPT), ("1", 6, MOSS_PROMPT)] {
+        let (rq, rs, sg) = raw(n);
+        ctx("backend", HOUR, 0);
+        p.charge_verified(id.into(), NearToken::from_yoctonear(MILLI), prompt.into(), rq, sha(&rs), sg);
+    }
+    p
+}
+#[test] fn real_arena_round_moss_wins() {
+    let mut p = real_arena();
+    let e = [("0", 5u8), ("1", 6)].map(|(id, n)| { let (rq, rs, _) = raw(n); ArenaEntryInput { token_id: id.into(), request: rq, response: rs } });
+    ctx("carol", 2 * HOUR, N / 10);
+    let r = p.arena_settle("puddle".into(), e.into());
+    assert_eq!(r.winner, "1");
+    assert!(r.entries.iter().all(|x| x.has_word));
+    assert!(r.entries[1].chars < r.entries[0].chars);
+}
+#[test] #[should_panic(expected = "not this pet's own prompt")] fn real_mochi_reply_cannot_be_charged_to_moss() {
+    let mut p = c();
+    ctx("owner", 0, 0); p.add_tee_signer(R_MODEL.into(), R_SIGNER.into());
+    ctx("alice", 0, N); p.mint_pet("Mochi".into(), R_PROMPT_HASH.into());
+    ctx("alice", 0, N); p.mint_pet("Moss".into(), R_PROMPT_HASH.into()); // the old shared personality
+    let (rq, rs, sg) = raw(5);
+    ctx("backend", HOUR, 0);
+    p.charge_verified("1".into(), NearToken::from_yoctonear(MILLI), R_PROMPT.into(), rq, sha(&rs), sg);
+}

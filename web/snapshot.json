@@ -13,33 +13,40 @@
       "owner_id": "petri-1793597952.testnet",
       "name": "Mochi",
       "prompt_hash": "d691db075710cfc9e33cbdebc2e3c60d64c77aed02aa383c9f0c9a3ee083871b",
-      "balance": "483033000000000000000000",
+      "balance": "480422000000000000000000",
       "last_fed_ns": "1793600953223076341",
-      "replies": 3,
-      "last_reply_hash": "ae41d7b688213a72f1c4af63691349fbfe414425727b612599d75073b9791afc",
+      "replies": 4,
+      "last_reply_hash": "d39519060d07faefb514b43f41c1f970be3b0a82f5667b41e2be2cb886d11792",
       "revives": 0,
       "asleep": false,
-      "pet_account": null
+      "pet_account": null,
+      "arena_wins": 0,
+      "tip": {
+        "chain": "Ethereum Sepolia (any EVM)",
+        "key": "secp256k1:2FEjn2vkSR7w3bRyeAwDoScVLfMeUhkLKRUZm7TycR9mZPKcR3SZAKNvmmJFW9XqZPTQjoQLxvKNnZwf8zNWFHfd",
+        "address": "0xf42A6f9388c558F78a01a9C6dd075A1Db7a292B3"
+      }
     },
     {
       "token_id": "1",
       "owner_id": "petri-1793597952.testnet",
       "name": "Moss",
-      "prompt_hash": "d691db075710cfc9e33cbdebc2e3c60d64c77aed02aa383c9f0c9a3ee083871b",
-      "balance": "289728000000000000000000",
+      "prompt_hash": "e9947b34bb71765dfb205786be8807bcf7fda643a6b397e04515b765450a87a0",
+      "balance": "287094000000000000000000",
       "last_fed_ns": "1793601234633055705",
-      "replies": 1,
-      "last_reply_hash": "9eb9b64565fcdea7a676228a8141fb34a6f1bcd630b82648d12a40d73908f606",
+      "replies": 2,
+      "last_reply_hash": "b6e0e996d8c488a540523f9638372d75857d1efd680306c901cc4fc98b59add5",
       "revives": 0,
       "asleep": false,
       "pet_account": "pet-1.v2.petri-1793597952.testnet",
-      "account_balance": "99668460324082300000000",
+      "arena_wins": 1,
+      "account_balance": "99112957763910900000000",
       "keys": [
         {
           "public_key": "ed25519:DGA4Ek4MKEHkMehEMq2uCpmbdQMJAG8mJXmKqdRv4gDr",
           "permission": {
             "FunctionCall": {
-              "allowance": "249668460324082300000000",
+              "allowance": "249112957763910900000000",
               "method_names": [
                 "charge_verified"
               ],
@@ -47,9 +54,54 @@
             }
           }
         }
-      ]
+      ],
+      "tip": {
+        "chain": "Ethereum Sepolia (any EVM)",
+        "key": "secp256k1:4P3mZPz4weEhE41KmkVdPStpTa2L8mvjP8K9FmWCt7wkUgfM5our2nbex6w3kBZEUPjppe18Vwwcn7Lr7TrmZZqi",
+        "address": "0x5a34926DdBbcC7b64F6f9BC4eaC59779B1DA2615",
+        "signed_tx": "7TueePpC1tA4skZkQy2fATJRHZfGEtDcuBLjEswtSDXk"
+      }
     }
   ],
+  "arena": [
+    {
+      "id": 0,
+      "question_hash": "d7fcac5c0393fd4f041fabe8b7bc29297678b37e1e892a9f0a946dfaf04ca2f9",
+      "challenge": "puddle",
+      "rule": "1) reply contains the challenge word (case-insensitive) 2) fewer characters 3) lower token id",
+      "entries": [
+        {
+          "token_id": "0",
+          "reply_hash": "d39519060d07faefb514b43f41c1f970be3b0a82f5667b41e2be2cb886d11792",
+          "has_word": true,
+          "chars": 78,
+          "response": "Rain taps softly on the leaves and gathers in every puddle like a tiny mirror."
+        },
+        {
+          "token_id": "1",
+          "reply_hash": "b6e0e996d8c488a540523f9638372d75857d1efd680306c901cc4fc98b59add5",
+          "has_word": true,
+          "chars": 63,
+          "response": "Rain whispers down, and every puddle holds a tiny piece of sky."
+        }
+      ],
+      "winner": "1",
+      "settled_by": "petri-backend-1793597952.testnet",
+      "at_ns": "1793603209426530725",
+      "question": "Arena round: describe rain in one line and use the word puddle.",
+      "tx": "3WENtHQS3q6Cv9qGscGLw3fDPaxioGfYndXZVdsUdJso"
+    }
+  ],
+  "tip_quote": {
+    "dry": true,
+    "amountIn": "0.001",
+    "amountOut": "0.550647158220718560697842",
+    "amountOutUsd": "2.274172763452",
+    "timeEstimate": 37,
+    "depositAddress": null,
+    "recipient": "anonymusk.near",
+    "refundTo": "0x5a34926DdBbcC7b64F6f9BC4eaC59779B1DA2615"
+  },
   "sleep_threshold": "10000000000000000000000",
-  "fetched_at": "2026-11-02T06:38:43.880Z"
+  "fetched_at": "2026-11-02T07:10:54.537Z"
 }
