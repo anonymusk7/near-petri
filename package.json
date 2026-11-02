@@ -1,9 +1,24 @@
-{ "name": "near-petri", "private": true, "type": "module", "license": "MIT",
-  "engines": { "node": ">=20" },
+{
+  "name": "near-petri",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "test": "pnpm test:contract && pnpm test:js",
     "test:contract": "cargo test",
     "test:js": "node --test test/*.test.mjs",
     "build:contract": "cargo build -p petri --target wasm32-unknown-unknown --release",
-    "chat:mock": "node scripts/chat-mock.mjs"
-  } }
+    "chat:mock": "node scripts/chat-mock.mjs",
+    "verify": "node scripts/verify.mjs",
+    "preflight": "MOCK_AI=0 node scripts/preflight.mjs",
+    "record:tee": "MOCK_AI=0 node scripts/record-tee.mjs",
+    "demo:testnet": "node scripts/demo-testnet.mjs"
+  },
+  "dependencies": {
+    "@phala/dcap-qvl": "0.7.0",
+    "ethers": "6.17.0"
+  }
+}

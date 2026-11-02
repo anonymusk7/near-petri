@@ -1,6 +1,6 @@
 import { test } from 'node:test'; import assert from 'node:assert/strict';
 import { chat, computeCost, replyHash, verifyReply, sha256, PRICING, MAX_MSG_LEN } from '../lib/chat.mjs';
-import { createAiClient, NEAR_AI_BASE } from '../lib/ai.mjs';
+import { createAiClient, NEAR_AI_BASE, DEFAULT_MODEL } from '../lib/ai.mjs';
 
 const prompt = 'Cheerful moss creature who loves rain.';
 const pet = { token_id: '0', name: 'Mochi', prompt, prompt_hash: sha256(prompt), balance: (10n ** 24n).toString(), asleep: false };
@@ -56,27 +56,32 @@ test('broke pet never triggers an AI call', async () => {
   assert.equal(called, false);
 });
 
-test('real client posts OpenAI-compatible request to NEAR AI Cloud', async () => {
-  let seen;
-  const f = async (url, o) => { seen = { url, headers: o.headers, body: JSON.parse(o.body) };
-    return { ok: true, json: async () => ({ id: 'cmpl-1', model: 'm', choices: [{ message: { content: 'meow' } }], usage: { prompt_tokens: 7, completion_tokens: 2 } }) }; };
-  const client = createAiClient({ mock: false, apiKey: 'k', model: 'm', fetch: f });
-  const r = await chat(pet, 'hi', { client });
-  assert.equal(seen.url, `${NEAR_AI_BASE}/chat/completions`);
-  assert.equal(seen.headers.authorization, 'Bearer k');
-  assert.equal(seen.body.model, 'm');
-  assert.equal(seen.body.messages[0].role, 'system');
-  assert.match(seen.body.messages[0].content, /You are Mochi.*moss/);
-  assert.deepEqual(seen.body.messages[1], { role: 'user', content: 'hi' });
-  assert.equal(r.reply, 'meow');
-  assert.equal(r.cost, (PRICING.base + 9n * PRICING.perToken).toString());
+test('real client: no completion is sent when preflight attestation fails', async () => {
+  const seen = [];
+  const f = async (url, o = {}) => { seen.push({ url, headers: o.headers });
+    return { ok: true, status: 200, text: async () => JSON.stringify({ gateway_attestation: {}, model_attestations: [] }) }; };
+  const client = createAiClient({ mock: false, apiKey: 'k', fetch: f });
+  await assert.rejects(chat(pet, 'hi', { client }), /no NEAR model evidence/);
+  assert.equal(seen.length, 1);
+  const u = new URL(seen[0].url);
+  assert.equal(u.origin + u.pathname, `${NEAR_AI_BASE}/attestation/report`);
+  assert.equal(u.searchParams.get('model'), DEFAULT_MODEL);
+  assert.equal(u.searchParams.get('provider'), 'near');
+  assert.equal(u.searchParams.get('signing_algo'), 'ecdsa');
+  assert.match(u.searchParams.get('nonce'), /^[0-9a-f]{64}$/);
+  assert.equal(seen[0].headers['x-no-aliasing'], 'true');
+  assert.equal(seen[0].headers.authorization, 'Bearer k');
 });
 
 test('real client errors', async () => {
   const msgs = [{ role: 'user', content: 'hi' }];
-  await assert.rejects(createAiClient({ mock: false, apiKey: undefined, fetch: async () => ({}) }).complete({ messages: msgs }), /NEAR_AI_API_KEY/);
+  await assert.rejects(createAiClient({ mock: false, apiKey: '', fetch: async () => ({}) }).complete({ messages: msgs }), /NEAR_AI_API_KEY/);
   await assert.rejects(createAiClient({ mock: false, apiKey: 'k', fetch: async () => ({ ok: false, status: 401, text: async () => 'nope' }) }).complete({ messages: msgs }), /401/);
-  await assert.rejects(createAiClient({ mock: false, apiKey: 'k', fetch: async () => ({ ok: true, json: async () => ({ choices: [] }) }) }).complete({ messages: msgs }), /no completion/);
+  await assert.rejects(createAiClient({ mock: false, apiKey: 'k', fetch: async () => { throw new Error('x'); } }).complete({ messages: msgs, maxTokens: 401 }), /capped at 400/);
+});
+
+test('default model is the canonical TEE id, not an alias', () => {
+  assert.equal(DEFAULT_MODEL, 'deepseek-ai/DeepSeek-V4.1-Flash-1017');
 });
 
 test('MOCK_AI env defaults to mock', () => {
