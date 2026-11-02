@@ -31,9 +31,8 @@ fn with_pet() -> Petri { let mut p = c(); ctx("alice", 0, N); p.mint_pet("Mochi"
     assert!(!v.asleep);
     let b = yocto(v.balance);
     assert!(b < N && b > N - N / 100, "storage should cost a small slice, got {b}");
-    assert_eq!(v.pet_account, "pet-0.petri.testnet");
+    assert_eq!(v.pet_account, None);
     assert!(get_logs().iter().any(|l| l.contains("nft_mint")));
-    assert!(get_logs().iter().any(|l| l.contains("STUB pet sub-account planned: pet-0.petri.testnet")));
 }
 
 #[test] fn mint_is_nep171_token() {
@@ -369,4 +368,52 @@ fn cv(p: &mut Petri, prompt: &str, req: &str, resp: &str, sig: &str) -> ReplyRec
     let mut p = c();
     ctx("alice", 0, 0);
     p.add_tee_signer(R_MODEL.into(), R_SIGNER.into());
+}
+
+// ---------- pet = its own NEAR account with a charge_verified-only key ----------
+const PK: &str = "ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp";
+fn acct_pet() -> Petri {
+    let mut p = c();
+    ctx("owner", 0, 0);
+    p.add_tee_signer(R_MODEL.into(), R_SIGNER.into());
+    ctx("alice", 0, N);
+    p.mint_pet_with_account("Mochi".into(), R_PROMPT_HASH.into(), PK.parse().unwrap());
+    p
+}
+fn cv_as(p: &mut Petri, who: &str) -> ReplyRecord {
+    testing_env!(VMContextBuilder::new().current_account_id(acc("petri")).predecessor_account_id(who.parse().unwrap())
+        .block_timestamp(HOUR).build());
+    p.charge_verified("0".into(), NearToken::from_yoctonear(MILLI), R_PROMPT.into(), R_REQUEST.into(), R_RESP_HASH.into(), R_SIG.into())
+}
+#[test] fn mint_with_account_creates_sub_account_and_limited_key() {
+    let p = acct_pet();
+    let v = p.get_pet("0".into()).unwrap();
+    assert_eq!(v.pet_account.unwrap().as_str(), "pet-0.petri.testnet");
+    assert!(yocto(v.balance) < N - PET_ACCOUNT_FUND && yocto(v.balance) > N - PET_ACCOUNT_FUND - N / 100);
+    assert!(get_logs().iter().any(|l| l.contains("pet account pet-0.petri.testnet: function-call key limited to charge_verified")));
+}
+#[test] fn pet_account_can_charge_its_own_replies() {
+    let mut p = acct_pet();
+    let rec = cv_as(&mut p, "pet-0.petri.testnet");
+    assert_eq!(rec.index, 0);
+    assert_eq!(p.get_pet("0".into()).unwrap().replies, 1);
+}
+#[test] #[should_panic(expected = "only this pet's own account")] fn backend_cannot_charge_account_pet() {
+    let mut p = acct_pet(); cv_as(&mut p, "backend.testnet");
+}
+#[test] #[should_panic(expected = "only this pet's own account")] fn other_pet_account_cannot_charge() {
+    let mut p = acct_pet();
+    ctx("bob", 0, N); p.mint_pet_with_account("Pip".into(), H2.into(), PK.parse().unwrap());
+    cv_as(&mut p, "pet-1.petri.testnet");
+}
+#[test] #[should_panic(expected = "registered NEAR AI TEE signer")] fn pet_account_still_needs_tee_signature() {
+    let mut p = acct_pet();
+    testing_env!(VMContextBuilder::new().current_account_id(acc("petri")).predecessor_account_id("pet-0.petri.testnet".parse().unwrap()).block_timestamp(HOUR).build());
+    p.charge_verified("0".into(), NearToken::from_yoctonear(MILLI), R_PROMPT.into(), R_REQUEST.into(), R_RESP_HASH.replace("4a8a", "4a8b"), R_SIG.into());
+}
+#[test] #[should_panic(expected = "use charge_verified")] fn legacy_charge_blocked_for_account_pet() {
+    let mut p = acct_pet(); ctx("backend", HOUR, 0); p.charge("0".into(), NearToken::from_yoctonear(MILLI), H.into());
+}
+#[test] #[should_panic(expected = "fund the pet account")] fn mint_with_account_needs_fund() {
+    let mut p = c(); ctx("alice", 0, N / 20); p.mint_pet_with_account("Mochi".into(), H.into(), PK.parse().unwrap());
 }

@@ -11,14 +11,14 @@ Everything below runs offline except step 4 (read-only NEAR RPC). No API key nee
 ```
 pnpm i
 ```
-1. Run `pnpm test`. You should see `51 passed` for Rust (including 9 `charge_verified` tests that ecrecover a **real** recorded NEAR AI signature and reject a tampered response, a tampered request, a wrong prompt, an unregistered signer, a non-backend caller and a replay) and `pass 16` for JS. The JS tests include offline re-verification of the **real** recorded NEAR AI evidence and a full replay of the TEE client against the recorded bytes.
+1. Run `pnpm test`. You should see `58 passed` for Rust (including 7 pet-account tests and 9 `charge_verified` tests that ecrecover a **real** recorded NEAR AI signature and reject a tampered response, a tampered request, a wrong prompt, an unregistered signer, a non-backend caller and a replay) and `pass 16` for JS. The JS tests include offline re-verification of the **real** recorded NEAR AI evidence and a full replay of the TEE client against the recorded bytes.
 2. Run `pnpm verify examples/recorded/reply-1.json`. You should see 8 ✓ checks (hashes, request shape, Intel TDX quotes via dcap-qvl, NVIDIA NRAS GPU verdict, preflight-before-completion, provider_tee signature, Petri receipt) and `=> VALID` (exit 0). `pnpm verify examples/recorded/reply-[0-9].json` checks all three (exit 0).
 3. Run `pnpm verify examples/recorded/reply-1.tampered.json` (same reply with the text swapped for a scam message). You should see `✗ response bytes hash to response_hash`, `✗ provider_tee signature … signature text does not match`, and `=> INVALID` (exit 1).
 4. Run `pnpm demo:testnet`. It reads pet #0 "Mochi" from `petri-1793597952.testnet` over RPC: balance ≈ 0.483 NEAR, `replies 3`. For each recorded reply it should show `on-chain get_reply: index N, cost 0.0011.. NEAR` with ✓ on-chain receipt matches record and ✓ TEE evidence verifies. The last line is `=> ALL RECORDED REPLIES CHARGED ON-CHAIN AND TEE-VERIFIED`.
 5. Run `pnpm chat:mock`. You should see 3 offline mock replies from "Mochi", the balance going down after each one, and `verify=true`.
 6. Optional, needs a NEAR AI key, free: `NEAR_AI_API_KEY=... pnpm preflight`. This runs the live attestation (no completion is sent) and prints gateway and model signers with `TCB UpToDate` and `GPU 8xHOPPER NRAS overall=true`.
 
-7. Run `pnpm demo:v2`. It reads `v2.petri-1793597952.testnet` over RPC. You should see the registered TEE signer `0xfe00…337e`, pet #0 Mochi with `replies 3`, and for each real reply `✓ on-chain ecrecover → 0xfe0071895500a9755c18044948ab4f4e1a7f337e`. The last line is `=> EVERY CHARGED REPLY CARRIES A NEAR AI TEE SIGNATURE VERIFIED BY THE CONTRACT`.
+7. Run `pnpm demo:v2`. It reads `v2.petri-1793597952.testnet` over RPC. You should see the registered TEE signer `0xfe00…337e`, pet #0 Mochi with `replies 3`, and for each of the 4 real replies `✓ on-chain ecrecover → 0xfe0071895500a9755c18044948ab4f4e1a7f337e`, then pet #1 Moss with its own account `pet-1.v2.petri-1793597952.testnet` and exactly one key, `✓ only charge_verified on v2.petri-1793597952.testnet, no full-access key`. The last line is `=> EVERY CHARGED REPLY CARRIES A NEAR AI TEE SIGNATURE VERIFIED BY THE CONTRACT`.
 
 ## On-chain TEE verification (v2: `charge_verified`)
 In v1 the contract trusted the backend's `reply_hash`. In v2 **the contract itself verifies the NEAR AI Cloud TEE signature** before it lets the pet pay for a thought:
@@ -39,6 +39,25 @@ Cost: about **3.07 Tgas** per verified reply (≈0.0003 NEAR).
 | Negative: reply-2 with one hex digit of `response_hash` flipped → `Smart contract panicked: signature does not recover to a registered NEAR AI TEE signer for this model` | rejected on-chain |
 
 Limits: the response *body* is not sent on-chain (only its hash, which is signed). Body-to-hash is checked off-chain by `pnpm verify`. Attestation itself is verified off-chain; the on-chain trust root is the owner-registered signer.
+
+
+## Each pet is its own NEAR account (`mint_pet_with_account`)
+`mint_pet_with_account(name, prompt_hash, pet_key)` mints the NFT **and** creates `pet-<id>.<contract>`:
+- It is funded with 0.1 NEAR from the mint deposit, so the pet pays its **own gas**.
+- Its only key is `pet_key`, a **function-call key that can call nothing but `charge_verified` on this contract**, with a 0.25 NEAR gas allowance. No full-access key exists.
+- The contract accepts charges for that pet **only from that account** (`only this pet's own account can charge it`). The backend, and other pets, are refused. The legacy `charge` is disabled for it.
+- Even the key holder can't charge a fake reply: `charge_verified` still ecrecovers the NEAR AI TEE signature on-chain.
+- If account creation fails, the `on_pet_account` callback refunds the 0.1 NEAR to the pet's balance.
+
+So a leaked chat-backend key can, at worst, submit this pet's genuine TEE-signed replies. It can't move NEAR, can't touch other pets, and can't call any other method.
+
+| pet account on testnet | tx |
+| - | - |
+| Upgrade v2 in place + `migrate` (Mochi keeps its 3 replies) | `GcE5wxZSWxuADjdSY5XX1Ng7iFykCrLx7rk7TdXs8naa` |
+| `mint_pet_with_account("Moss", …)`, 0.4 NEAR → creates `pet-1.v2.petri-1793597952.testnet` + FC key | `BUxc5RgrnLS4dqDGwvTdNkUyfDxHs8uR9VgHUi7zFTq2` |
+| Pet #1 charges its own real TEE reply (reply-4), signed by the pet's own key, 10 Tgas | `BBXro5CMCnCotZ4oUYMpU2hdDZXLWvRgE3z2CgKegxZG` |
+| Negative: the backend calls `charge_verified` for pet #1 → `only this pet's own account can charge it` | rejected on-chain |
+| Negative: the pet key tries `feed` → `Transaction method name <feed> isn't allowed by the access key` | refused |
 
 ## Testnet deployment (recorded)
 | What | Account / tx |
@@ -99,7 +118,7 @@ pnpm chat:mock               # offline chat demo
 pnpm build:contract:deploy   # the deployed wasm (target/mvp/...)
 # real TEE path (needs NEAR_AI_API_KEY in env; key is never written to disk by this repo):
 pnpm preflight               # free: live attestation only
-pnpm record:tee "msg"        # PAID: refuses beyond 3 recorded replies
+pnpm record:tee "msg"        # PAID: refuses beyond 4 recorded replies
 ```
 `MOCK_AI=1` is the default, so tests and demos never call the paid API.
 

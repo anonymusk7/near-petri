@@ -8,7 +8,7 @@ import { chat, sha256 } from '../lib/chat.mjs';
 import { createAiClient, usageCostUsd } from '../lib/ai.mjs';
 import { DEMO_PET } from './demo-pet.mjs';
 
-const MAX_RECORDED = 3;
+const MAX_RECORDED = 4;
 const DIR = path.resolve('examples/recorded');
 const LOG = '/workspace/near-ai-usage.log';
 const msgs = process.argv.slice(2);

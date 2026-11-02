@@ -14,7 +14,7 @@ use near_contract_standards::non_fungible_token::{NonFungibleToken, Token, Token
 use near_sdk::collections::LazyOption;
 use near_sdk::json_types::{U128, U64};
 use near_sdk::store::LookupMap;
-use near_sdk::{env, near, require, AccountId, BorshStorageKey, NearToken, PanicOnDefault, Promise, PromiseOrValue};
+use near_sdk::{env, near, require, AccountId, Allowance, BorshStorageKey, Gas, NearToken, PanicOnDefault, Promise, PromiseOrValue, PromiseResult, PublicKey};
 use std::collections::HashMap;
 
 pub const ONE_NEAR: u128 = 1_000_000_000_000_000_000_000_000;
@@ -23,6 +23,12 @@ pub const DEFAULT_SLEEP_THRESHOLD: u128 = ONE_NEAR / 100;
 /// Default: a pet unfed for 24h sleeps.
 pub const DEFAULT_HUNGER_NS: u64 = 24 * 60 * 60 * 1_000_000_000;
 pub const MAX_NAME_LEN: usize = 32;
+/// NEAR moved from the mint deposit into the pet's own account (pays its own gas + account storage).
+pub const PET_ACCOUNT_FUND: u128 = ONE_NEAR / 10;
+/// Gas allowance on the pet's function-call key (it can never spend more than this on fees).
+pub const PET_KEY_ALLOWANCE: u128 = ONE_NEAR / 4;
+/// The only method the pet's key may call.
+pub const PET_KEY_METHOD: &str = "charge_verified";
 
 #[derive(BorshStorageKey)]
 #[near]
@@ -34,6 +40,7 @@ enum StorageKey {
     Pets,
     Replies,
     TeeProofs,
+    PetAccounts,
 }
 
 #[near(serializers = [borsh])]
@@ -70,8 +77,10 @@ pub struct PetView {
     pub last_reply_hash: Option<String>,
     pub revives: u32,
     pub asleep: bool,
-    /// Planned per-pet sub-account; creation is a stub (see `pet_account_id`).
-    pub pet_account: String,
+    /// The pet's own NEAR account `pet-<id>.<contract>` (None for legacy pets).
+    /// It holds a function-call key that can only call `charge_verified` on this
+    /// contract, and the contract only accepts charges for this pet from it.
+    pub pet_account: Option<AccountId>,
 }
 
 #[near(serializers = [json])]
@@ -111,6 +120,25 @@ pub struct Petri {
     /// taken from a verified model attestation report.
     tee_signers: Vec<TeeSigner>,
     /// Proof of the TEE signature checked on-chain for each `charge_verified` reply.
+    tee_proofs: LookupMap<String, TeeProof>,
+    /// token_id -> the pet's own sub-account (see `mint_pet_with_account`).
+    pet_accounts: LookupMap<TokenId, AccountId>,
+}
+
+/// v2 state layout (before `pet_accounts`), for `migrate`.
+#[near(serializers = [borsh])]
+pub struct PetriV2 {
+    tokens: NonFungibleToken,
+    metadata: LazyOption<NFTContractMetadata>,
+    owner_id: AccountId,
+    backend_id: AccountId,
+    sleep_threshold: NearToken,
+    hunger_ns: u64,
+    pets: LookupMap<TokenId, Pet>,
+    replies: LookupMap<String, ReplyRecord>,
+    next_id: u64,
+    treasury: NearToken,
+    tee_signers: Vec<TeeSigner>,
     tee_proofs: LookupMap<String, TeeProof>,
 }
 
@@ -165,6 +193,20 @@ impl Petri {
             treasury: NearToken::from_yoctonear(0),
             tee_signers: Vec::new(),
             tee_proofs: LookupMap::new(StorageKey::TeeProofs),
+            pet_accounts: LookupMap::new(StorageKey::PetAccounts),
+        }
+    }
+
+    /// One-shot state upgrade from the v2 layout (adds `pet_accounts`).
+    #[private]
+    #[init(ignore_state)]
+    pub fn migrate() -> Self {
+        let o: PetriV2 = env::state_read().unwrap_or_else(|| env::panic_str("no v2 state"));
+        Self {
+            tokens: o.tokens, metadata: o.metadata, owner_id: o.owner_id, backend_id: o.backend_id,
+            sleep_threshold: o.sleep_threshold, hunger_ns: o.hunger_ns, pets: o.pets, replies: o.replies,
+            next_id: o.next_id, treasury: o.treasury, tee_signers: o.tee_signers, tee_proofs: o.tee_proofs,
+            pet_accounts: LookupMap::new(StorageKey::PetAccounts),
         }
     }
 
@@ -174,6 +216,53 @@ impl Petri {
     /// everything beyond that becomes the pet's balance.
     #[payable]
     pub fn mint_pet(&mut self, name: String, prompt_hash: String) -> PetView {
+        self.mint_inner(name, prompt_hash)
+    }
+
+    /// Mint a pet that is its own NEAR account. The contract creates
+    /// `pet-<id>.<contract>`, funds it with `PET_ACCOUNT_FUND` from the deposit, and
+    /// adds `pet_key` as a function-call key that can ONLY call `charge_verified` on
+    /// this contract with at most `PET_KEY_ALLOWANCE` of gas. No full-access key
+    /// exists, so the key holder (the chat backend) can do nothing except submit
+    /// this pet's TEE-signed replies, which the contract still verifies on-chain.
+    #[payable]
+    pub fn mint_pet_with_account(&mut self, name: String, prompt_hash: String, pet_key: PublicKey) -> PetView {
+        let view = self.mint_inner(name, prompt_hash);
+        let token_id = view.token_id.clone();
+        let fund = NearToken::from_yoctonear(PET_ACCOUNT_FUND);
+        let pet = self.pet_mut(&token_id);
+        require!(pet.balance.as_yoctonear() > PET_ACCOUNT_FUND, "attach enough to also fund the pet account (0.1 NEAR)");
+        pet.balance = pet.balance.saturating_sub(fund);
+        let account: AccountId = self.pet_account_id(&token_id).parse().unwrap();
+        self.pet_accounts.insert(token_id.clone(), account.clone());
+        Promise::new(account.clone())
+            .create_account()
+            .transfer(fund)
+            .add_access_key_allowance(pet_key, Allowance::limited(NearToken::from_yoctonear(PET_KEY_ALLOWANCE)).unwrap(),
+                                      env::current_account_id(), PET_KEY_METHOD.to_string())
+            .then(Promise::new(env::current_account_id()).function_call(
+                "on_pet_account".to_string(),
+                near_sdk::serde_json::to_vec(&near_sdk::serde_json::json!({"token_id": token_id})).unwrap(),
+                NearToken::from_yoctonear(0), Gas::from_tgas(5)));
+        env::log_str(&format!("pet account {account}: function-call key limited to {PET_KEY_METHOD}"));
+        self.get_pet(token_id).unwrap()
+    }
+
+    /// Callback: if creating the pet account failed, the fund was refunded to this
+    /// contract; credit it back to the pet and fall back to a legacy (backend) pet.
+    #[private]
+    pub fn on_pet_account(&mut self, token_id: TokenId) -> bool {
+        if matches!(env::promise_result(0), PromiseResult::Successful(_)) { return true; }
+        self.pet_accounts.remove(&token_id);
+        let pet = self.pet_mut(&token_id);
+        pet.balance = pet.balance.saturating_add(NearToken::from_yoctonear(PET_ACCOUNT_FUND));
+        env::log_str(&format!("pet account creation failed for {token_id}; refunded to pet balance"));
+        false
+    }
+}
+
+impl Petri {
+    fn mint_inner(&mut self, name: String, prompt_hash: String) -> PetView {
         require!(!name.is_empty() && name.len() <= MAX_NAME_LEN, "name must be 1-32 bytes");
         require!(is_valid_hash(&prompt_hash), "prompt_hash must be 64 lowercase hex chars (sha256)");
         let owner = env::predecessor_account_id();
@@ -200,9 +289,12 @@ impl Petri {
         require!(attached > storage_cost, format!("attach more than storage cost of {storage_cost} yocto"));
         self.pets.get_mut(&token_id).unwrap().balance = NearToken::from_yoctonear(attached - storage_cost);
         NftMint { owner_id: &owner, token_ids: &[&token_id], memo: None }.emit();
-        self.create_pet_account(&token_id);
         self.get_pet(token_id).unwrap()
     }
+}
+
+#[near]
+impl Petri {
 
     /// Owner tops up the pet's balance and resets its hunger clock.
     #[payable]
@@ -237,6 +329,7 @@ impl Petri {
     /// The storage for the receipt is paid from the pet's balance too.
     pub fn charge(&mut self, token_id: TokenId, cost: NearToken, reply_hash: String) -> ReplyRecord {
         require!(env::predecessor_account_id() == self.backend_id, "only the backend can charge");
+        require!(!self.pet_accounts.contains_key(&token_id), "this pet has its own account: use charge_verified from it");
         require!(is_valid_hash(&reply_hash), "reply_hash must be 64 lowercase hex chars (sha256)");
         self.charge_inner(token_id, cost, reply_hash)
     }
@@ -278,7 +371,10 @@ impl Petri {
     /// Only then is the reply debited from the pet's own balance.
     pub fn charge_verified(&mut self, token_id: TokenId, cost: NearToken, prompt: String,
                            request: String, response_hash: String, signature: String) -> ReplyRecord {
-        require!(env::predecessor_account_id() == self.backend_id, "only the backend can charge");
+        match self.pet_accounts.get(&token_id) {
+            Some(a) => require!(&env::predecessor_account_id() == a, "only this pet's own account can charge it"),
+            None => require!(env::predecessor_account_id() == self.backend_id, "only the backend can charge"),
+        }
         require!(is_valid_hash(&response_hash), "response_hash must be 64 lowercase hex chars (sha256)");
         let pet = self.pets.get(&token_id).unwrap_or_else(|| env::panic_str("no such pet"));
         require!(hex(&env::sha256(prompt.as_bytes())) == pet.prompt_hash, "prompt does not match the pet's on-chain prompt_hash");
@@ -357,7 +453,7 @@ impl Petri {
             last_reply_hash: pet.last_reply_hash.clone(),
             revives: pet.revives,
             asleep: self.asleep(&token_id),
-            pet_account: self.pet_account_id(&token_id),
+            pet_account: self.pet_accounts.get(&token_id).cloned(),
             token_id,
         })
     }
@@ -402,19 +498,11 @@ impl Petri {
                     pet.last_fed_ns, env::block_timestamp(), self.hunger_ns)
     }
 
-    /// `pet-<id>.<this contract>`: the pet's planned own account.
+    /// `pet-<id>.<this contract>`: the pet's own account id.
     fn pet_account_id(&self, token_id: &TokenId) -> String {
         format!("pet-{token_id}.{}", env::current_account_id())
     }
 
-    /// STUB (SPEC step 1): the factory should create `pet-<id>.<contract>` as a
-    /// sub-account and move the pet balance there, e.g.
-    /// `Promise::new(id).create_account().transfer(balance).add_full_access_key(..)`.
-    /// For now balances are held and accounted for inside this contract; we only
-    /// log the planned account so indexers/UI can show it.
-    fn create_pet_account(&self, token_id: &TokenId) {
-        env::log_str(&format!("STUB pet sub-account planned: {}", self.pet_account_id(token_id)));
-    }
 }
 
 // ---------- NEP-171 plumbing ----------
