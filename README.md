@@ -1,47 +1,99 @@
 # Petri: AI pets that pay for their own brain
 
-**What:** Petri pets are NEP-171 NFTs on NEAR. Each pet has its own on-chain NEAR balance. Every chat reply from its AI brain (NEAR AI Cloud) is debited from that balance and recorded on-chain as a sha256 reply hash. When a pet runs out of money, or nobody feeds it for 24h, it falls asleep. Anyone can wake it up with a tip.
+**What:** Petri pets are NEP-171 NFTs on NEAR. Each pet has its own on-chain NEAR balance. Every chat reply from its AI brain (a NEAR AI Cloud model running in a TEE) is debited from that balance and recorded on-chain as a receipt hash. That hash commits to the exact request/response bytes the model's TEE signed. When a pet runs out of money, or nobody feeds it for 24h, it falls asleep. Anyone can wake it up with a tip.
 
 **Problem:** virtual pets get boring after day one, and their "AI" is a centralized black box. In Petri the pet's own balance pays for a brain you can verify, so caring for it (feeding, tipping) has a real, visible effect.
 
-Inspired by @ilblackdragon's "AI Tamagochi" idea. Status: work in progress (NEAR HACKATHON, Nov 2026). This repo covers day 1-2 of `SPEC.md`: the contract core and the chat/charge backend library.
+Inspired by @ilblackdragon's "AI Tamagochi" idea. Status: work in progress (NEAR HACKATHON, Nov 2026). This repo covers the contract core, a verified TEE chat backend, and a live testnet deployment.
+
+## Judge steps (do X, see Y)
+Everything below runs offline except step 4 (read-only NEAR RPC). No API key needed.
+```
+pnpm i
+```
+1. Run `pnpm test`. You should see `42 passed` for Rust and `pass 16` for JS. The JS tests include offline re-verification of the **real** recorded NEAR AI evidence and a full replay of the TEE client against the recorded bytes.
+2. Run `pnpm verify examples/recorded/reply-1.json`. You should see 8 ✓ checks (hashes, request shape, Intel TDX quotes via dcap-qvl, NVIDIA NRAS GPU verdict, preflight-before-completion, provider_tee signature, Petri receipt) and `=> VALID` (exit 0). `pnpm verify examples/recorded/reply-[0-9].json` checks all three (exit 0).
+3. Run `pnpm verify examples/recorded/reply-1.tampered.json` (same reply with the text swapped for a scam message). You should see `✗ response bytes hash to response_hash`, `✗ provider_tee signature … signature text does not match`, and `=> INVALID` (exit 1).
+4. Run `pnpm demo:testnet`. It reads pet #0 "Mochi" from `petri-1793597952.testnet` over RPC: balance ≈ 0.483 NEAR, `replies 3`. For each recorded reply it should show `on-chain get_reply: index N, cost 0.0011.. NEAR` with ✓ on-chain receipt matches record and ✓ TEE evidence verifies. The last line is `=> ALL RECORDED REPLIES CHARGED ON-CHAIN AND TEE-VERIFIED`.
+5. Run `pnpm chat:mock`. You should see 3 offline mock replies from "Mochi", the balance going down after each one, and `verify=true`.
+6. Optional, needs a NEAR AI key, free: `NEAR_AI_API_KEY=... pnpm preflight`. This runs the live attestation (no completion is sent) and prints gateway and model signers with `TCB UpToDate` and `GPU 8xHOPPER NRAS overall=true`.
+
+## Testnet deployment (recorded)
+| What | Account / tx |
+| - | - |
+| Contract + owner | [`petri-1793597952.testnet`](https://testnet.nearblocks.io/address/petri-1793597952.testnet) (new faucet account) |
+| Backend (only account allowed to `charge`) | [`petri-backend-1793597952.testnet`](https://testnet.nearblocks.io/address/petri-backend-1793597952.testnet) (new faucet account) |
+| Deploy + `new(owner_id, backend_id)` | [`Eu8MS7TC92UZ11FC5ypxuDZHFA3mMETq4jKZT5Zqrkk7`](https://testnet.nearblocks.io/txns/Eu8MS7TC92UZ11FC5ypxuDZHFA3mMETq4jKZT5Zqrkk7) |
+| `mint_pet("Mochi", d691db07…871b)` with 0.5 NEAR → token `0`, balance 0.49152 NEAR | [`DW6C49Qm52SgFruxWz1e5BJn85oZ1drQNUVV9rsFcWuy`](https://testnet.nearblocks.io/txns/DW6C49Qm52SgFruxWz1e5BJn85oZ1drQNUVV9rsFcWuy) |
+| `charge` reply-1 (`106cf4ca…88bf`, 0.00115 NEAR) by backend | [`FGrP7n2y1xxdLuWr9Sdwuuwdm7UV2bviKYRtqS6fhaQo`](https://testnet.nearblocks.io/txns/FGrP7n2y1xxdLuWr9Sdwuuwdm7UV2bviKYRtqS6fhaQo) |
+| `charge` reply-2 (`7c562fe2…3894`, 0.001147 NEAR) by backend | [`Cy8itd14e6WKRTA6xAR3uycRASKJWqPVzCggZ26kVM6x`](https://testnet.nearblocks.io/txns/Cy8itd14e6WKRTA6xAR3uycRASKJWqPVzCggZ26kVM6x) |
+| `charge` reply-3 (`4225e9dc…062e`, 0.00113 NEAR) by backend | [`CUiNfCbHcQzw6bqc2tdpWbRcvo9R7QSTw6rZ9CGk5S3s`](https://testnet.nearblocks.io/txns/CUiNfCbHcQzw6bqc2tdpWbRcvo9R7QSTw6rZ9CGk5S3s) |
+| Negative check: `charge` signed by the owner, not the backend → `Smart contract panicked: only the backend can charge` | [`Hx5HrdQNmJqsfSprND75AvsFr1rNNd9bzSQWNgXi9f94`](https://testnet.nearblocks.io/txns/Hx5HrdQNmJqsfSprND75AvsFr1rNNd9bzSQWNgXi9f94) (failed, as intended) |
+
+Deployed code hash `6SPGEDfJM1SG8F3iZTVrurshQCNBuFbX8R9xrpAsswTR` (sha256 `50cb2090…7e64`). You get the same wasm with `pnpm build:contract:deploy` (Rust 1.86, `-C target-cpu=mvp`), so you can compare it against `view_account.code_hash`.
+
+## Verified TEE brain (`lib/attest.mjs`, `lib/ai.mjs`, `lib/verify.mjs`)
+With `MOCK_AI=0`, `chat()` follows `docs/nearai/*.md` step by step. Model: `deepseek-ai/DeepSeek-V4.1-Flash-1017`, the canonical ID. The `deepseek/deepseek-v4.1-flash` alias returns no NEAR model attestation.
+1. **Preflight, before any completion.** `GET /v1/attestation/report?model=…&provider=near&signing_algo=ecdsa&nonce=<32 random bytes>` with `x-no-aliasing: true`. For the gateway report and *every* `model_attestations[]` candidate:
+   - verify `intel_quote` with `@phala/dcap-qvl` (TCB policy: `UpToDate`), and check that TDX debug is off;
+   - check `report_data` from the verified quote equals the signer (zero-padded to 32 bytes) followed by the nonce, and check the echoed nonce;
+   - check MRCONFIGID = `01 || sha256(app_compose) || 0×15`;
+   - replay the RTMR3 event log.
+   For each model candidate, also check `nvidia_payload.nonce` equals our nonce, then POST the payload unchanged to NVIDIA NRAS and require JWT `x-nvidia-overall-att-result == true`. The JWT's ES384 signature is checked against the NRAS JWKS. If any step fails, no completion is sent (this is tested).
+2. **Completion.** Non-streaming, `Accept-Encoding: identity`, `x-no-aliasing: true`, `max_tokens ≤ 400`. The request body is serialized once, and the exact request and response bytes are kept.
+3. **Signature.** `GET /v1/signature/<chat_id>?signing_algo=ecdsa`, retried up to 5 times on 404 or on a 2xx carrying `error_code`. It must be `signature_kind: provider_tee` with `text == MODEL:sha256(req):sha256(resp)`. The EIP-191 ecrecover result must equal `signing_address`, and that address must match **exactly one** verified preflight model report.
+4. **Record.** `{chat_id, model, request_hash, response_hash, signature, signing_address, attestation summary}`, plus the pet, msg, reply, cost, and the exact request/response strings. The on-chain `reply_hash` is `sha256(JSON{v:2, token_id, prompt_hash, chat_id, model, request_hash, response_hash})`, so the chain receipt commits to the TEE-signed bytes.
+
+`pnpm verify` re-runs every check **offline**. The preflight file stores the raw attestation bytes, the Intel collateral (re-verified with dcap-qvl at the recorded time), and the NRAS verdict and JWKS. It also checks that the preflight came before the completion (`verified_at <= created`), that the system prompt matches the pet's `prompt_hash`, and that the receipt hashes to `reply_hash`.
+
+Recorded evidence in `examples/recorded/`:
+- `reply-{1,2,3}.json`: the verifiable records.
+- `preflight-*.json`: the raw attestation report, collateral, and NRAS evidence (no secrets; no Authorization header is ever saved).
+- `raw/`: the exact request/response/signature bytes.
+- `reply-1.tampered.json`: the negative example.
+
+Real NEAR AI usage: **3 completions, 210 input + 217 output tokens = $0.000323**. Attestation, signature, and model-list calls are free. Recording is capped at 3 replies (`scripts/record-tee.mjs`), and each call is appended to the usage log.
 
 ## NEAR tech used
-- Rust `near-sdk` 5.5 + `near-contract-standards` 5.5 NEP-171 NFT (core, enumeration, metadata) in `contracts/petri`.
+- **NEAR AI Cloud** (`cloud-api.near.ai`), Confidential TEE model `deepseek-ai/DeepSeek-V4.1-Flash-1017`: gateway + NEAR model attestation (Intel TDX via `@phala/dcap-qvl`, NVIDIA H100 via NRAS), and `provider_tee` ECDSA response signatures (`ethers`).
+- Rust `near-sdk` 5.5 + `near-contract-standards` 5.5 NEP-171 NFT (core, enumeration, metadata) in `contracts/petri`, deployed on **NEAR testnet**.
 - `mint_pet(name, prompt_hash)` (payable): the attached deposit pays for storage first, and the rest becomes the pet's balance. The personality prompt hash is stored on-chain (also in the token's `extra`).
 - `feed(token_id)` (payable, pet owner only): tops up the balance and resets the hunger clock.
 - `charge(token_id, cost, reply_hash)`: only the configured backend account can call it. It debits `cost` plus the receipt's storage, increments the reply count, and stores a `ReplyRecord` you can look up with `get_reply(reply_hash)`. The same hash can't be charged twice.
 - `is_asleep(token_id)`: true when `balance < sleep_threshold` (default 0.01 NEAR) or the pet has gone unfed longer than `hunger_ns` (default 24h).
 - `revive(token_id)` (payable, anyone): only works on a sleeping pet, and the tip must lift its balance to at least the threshold.
 - Admin: `set_backend`, `set_params`, `withdraw_treasury` (charged fees go to the operator, who pays NEAR AI Cloud). Views: `get_pet`, `get_reply`, `get_config`, plus the standard `nft_*` methods.
-- The balance belongs to the token, so it moves with `nft_transfer`.
-- **Stub:** per-pet sub-accounts (`pet-<id>.<contract>`). Mint logs and returns the planned account (`pet_account`), but balances are still held and accounted for inside the contract. See `create_pet_account` in `contracts/petri/src/lib.rs`.
-- Planned (day 3+): a function-call access key for the backend that can only call `charge`, testnet deploy, the arena, episodes, and 1Click tips.
-
-## Backend (`lib/`)
-- `lib/ai.mjs`: OpenAI-compatible NEAR AI Cloud client (`https://cloud-api.near.ai/v1/chat/completions`). With `MOCK_AI=1` (the default) it returns deterministic mock replies, so no key or network is needed. Set `MOCK_AI=0 NEAR_AI_API_KEY=...` to use the real API.
-- `lib/chat.mjs`: `chat(pet, msg)` checks that `sha256(prompt) == prompt_hash` (the on-chain prompt), refuses sleeping or broke pets before making any paid call, computes `cost = 0.001 NEAR + 1e18 yocto × tokens`, and returns `replyHash = sha256({v,token_id,prompt_hash,msg,reply,model})` plus ready-to-send `chargeArgs`. `verifyReply(receipt, hash)` recomputes the hash.
+- NEAR JSON-RPC `query/call_function` view calls (`scripts/demo-testnet.mjs`); `near-cli-rs` for deploy and calls.
+- **Stub:** per-pet sub-accounts (`pet-<id>.<contract>`). Mint logs and returns the planned account (`pet_account`), but balances are still held and accounted for inside the contract.
 
 ## Run
 ```
-# needs Rust 1.86 (rust-toolchain) + wasm32-unknown-unknown target, Node 20+, pnpm
-pnpm test            # cargo unit tests + node tests
-pnpm build:contract  # target/wasm32-unknown-unknown/release/petri.wasm
-pnpm chat:mock       # offline chat demo: reply, cost, balance, charge args
+# needs Rust 1.86 (rust-toolchain) + wasm32-unknown-unknown, Node 20+, pnpm
+pnpm i
+pnpm test                    # cargo unit tests + node tests (offline, mock AI by default)
+pnpm verify examples/recorded/reply-1.json
+pnpm demo:testnet            # live testnet state via RPC (PETRI_CONTRACT / NEAR_RPC / PET_ID to override)
+pnpm chat:mock               # offline chat demo
+pnpm build:contract:deploy   # the deployed wasm (target/mvp/...)
+# real TEE path (needs NEAR_AI_API_KEY in env; key is never written to disk by this repo):
+pnpm preflight               # free: live attestation only
+pnpm record:tee "msg"        # PAID: refuses beyond 3 recorded replies
 ```
-
-## Judge steps (do X, see Y)
-1. Run `pnpm test`. You should see `42 passed` for Rust (mint/feed/charge/sleep/revive, guard rails, NEP-171 transfer, and a deposit-conservation property) and `pass 9` for JS.
-2. Run `pnpm chat:mock`. You should see 3 replies from "Mochi". Each costs about 0.00104 NEAR, the balance goes down after each one, and each line ends with `charge {...reply_hash...} verify=true`.
-3. Run `pnpm build:contract`. You should see `petri.wasm` (about 430 KB) in `target/wasm32-unknown-unknown/release/`.
-4. Not deployed yet: there is no testnet link at this stage.
+`MOCK_AI=1` is the default, so tests and demos never call the paid API.
 
 ## Honest limits
-- Inference goes through the backend, because the API key lives there. "The pet pays" is enforced by the contract's accounting (`charge` is backend-only, and the reply hashes are public). It is not trustless inference. Checking NEAR AI TEE signatures is planned.
-- The sub-account per pet is a stub (see above).
+- Inference goes through the backend, because the API key lives there. "The pet pays" is enforced by the contract's accounting (`charge` is backend-only) and is publicly auditable: every on-chain `reply_hash` opens to a TEE-signed request/response. The contract does not verify the TEE signature on-chain.
+- Per NEAR's docs, instances of one model share a signing key, so a matching `provider_tee` signer does not prove that the attested instance and the serving instance are the same machine. A `provider_tee` signature also isn't bound to the gateway or TLS evidence. Our TCB/measurement policy is "UpToDate + the checks above", with no allowlist of compose hashes yet.
+- The NRAS verdict is re-checked offline by its JWT signature (recorded JWKS). The GPU evidence itself is only evaluated by NVIDIA at record time.
+- The sub-account per pet is a stub. Arena, episodes, 1Click tips, and a function-call-only backend key are planned (see `SPEC.md`).
 
-## Disclosure
-The same author is building other independent NEAR HACKATHON projects; they will be named here if submitted (rule Q-015).
+## Related projects by the same author (Q-015)
+These are independent NEAR HACKATHON projects by the same author:
+- https://github.com/anonymusk7/near-petri (this repo)
+- https://github.com/anonymusk7/near-sealed: SEALED, attested AI code-review certificates using NEAR AI Cloud TEE signatures and an on-chain registry.
+- https://github.com/anonymusk7/near-showup
+
+No code was vendored from SEALED: it had no attestation verifier yet, so `lib/attest.mjs` was written from NEAR's docs (`docs/nearai/`).
 
 ## License
-MIT
+MIT (see `LICENSE`).

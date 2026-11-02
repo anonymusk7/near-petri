@@ -15,7 +15,8 @@
     "verify": "node scripts/verify.mjs",
     "preflight": "MOCK_AI=0 node scripts/preflight.mjs",
     "record:tee": "MOCK_AI=0 node scripts/record-tee.mjs",
-    "demo:testnet": "node scripts/demo-testnet.mjs"
+    "demo:testnet": "node scripts/demo-testnet.mjs",
+    "build:contract:deploy": "RUSTFLAGS=\"-C target-cpu=mvp -C link-arg=-s\" cargo build -p petri --target wasm32-unknown-unknown --release --target-dir target/mvp"
   },
   "dependencies": {
     "@phala/dcap-qvl": "0.7.0",
