@@ -1,0 +1,9 @@
+{ "name": "near-petri", "private": true, "type": "module", "license": "MIT",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "test": "pnpm test:contract && pnpm test:js",
+    "test:contract": "cargo test",
+    "test:js": "node --test test/*.test.mjs",
+    "build:contract": "cargo build -p petri --target wasm32-unknown-unknown --release",
+    "chat:mock": "node scripts/chat-mock.mjs"
+  } }
