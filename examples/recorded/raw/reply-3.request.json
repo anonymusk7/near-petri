@@ -1,0 +1,1 @@
+{"model":"deepseek-ai/DeepSeek-V4.1-Flash-1017","messages":[{"role":"system","content":"You are Mochi, a Petri pet living on NEAR. Cheerful moss creature who loves rain. Answer in at most two short sentences."},{"role":"user","content":"Goodnight Mochi, see you tomorrow!"}],"max_tokens":400,"stream":false}
