@@ -295,3 +295,78 @@ fn with_pet() -> Petri { let mut p = c(); ctx("alice", 0, N); p.mint_pet("Mochi"
     let balances: u128 = (0..20u64).map(|i| yocto(p.get_pet(i.to_string()).unwrap().balance)).sum();
     assert_eq!(balances + yocto(p.get_config().treasury) + storage, attached);
 }
+
+// ---------- on-chain TEE verification, against a REAL recorded NEAR AI Cloud reply ----------
+// Values from examples/recorded/reply-1.json (DeepSeek-V4.1-Flash-1017, provider_tee ECDSA).
+const R_PROMPT: &str = "Cheerful moss creature who loves rain.";
+const R_PROMPT_HASH: &str = "d691db075710cfc9e33cbdebc2e3c60d64c77aed02aa383c9f0c9a3ee083871b";
+const R_MODEL: &str = "deepseek-ai/DeepSeek-V4.1-Flash-1017";
+const R_REQUEST: &str = r#"{"model":"deepseek-ai/DeepSeek-V4.1-Flash-1017","messages":[{"role":"system","content":"You are Mochi, a Petri pet living on NEAR. Cheerful moss creature who loves rain. Answer in at most two short sentences."},{"role":"user","content":"Hi Mochi! What did you do today?"}],"max_tokens":400,"stream":false}"#;
+const R_RESP_HASH: &str = "4a8a750dc550e2d2dd186bc474fb15e7d21f56f30ff0598b744ba696569c3342";
+const R_SIG: &str = "0x38a268f28dd1771a96708b8568f3275495ef1eb9e15c2a96984d10ccddb26f55482039de99771e0f44e7289a14082a59c7ad17b093ded91d999c0041561a14ee1c";
+const R_SIGNER: &str = "0xfe0071895500a9755c18044948ab4f4e1a7f337e";
+const MILLI: u128 = N / 1000;
+
+fn tee_pet() -> Petri {
+    let mut p = c();
+    ctx("owner", 0, 0);
+    p.add_tee_signer(R_MODEL.into(), "0xFE0071895500A9755C18044948AB4f4e1A7f337e".into());
+    ctx("alice", 0, N);
+    p.mint_pet("Mochi".into(), R_PROMPT_HASH.into());
+    p
+}
+fn cv(p: &mut Petri, prompt: &str, req: &str, resp: &str, sig: &str) -> ReplyRecord {
+    ctx("backend", HOUR, 0);
+    p.charge_verified("0".into(), NearToken::from_yoctonear(MILLI), prompt.into(), req.into(), resp.into(), sig.into())
+}
+
+#[test] fn ecrecover_real_near_ai_signature() {
+    ctx("x", 0, 0);
+    let text = format!("{R_MODEL}:45f0ca8cdd467cc8877f56cbcf9ceb0b8bf7fc824feacbf85f6a2a7e47ec3d95:{R_RESP_HASH}");
+    assert_eq!(recover_eip191(&text, R_SIG).as_deref(), Some(R_SIGNER));
+}
+#[test] fn charge_verified_real_reply_ok() {
+    let mut p = tee_pet();
+    let before = yocto(p.get_pet("0".into()).unwrap().balance);
+    let rec = cv(&mut p, R_PROMPT, R_REQUEST, R_RESP_HASH, R_SIG);
+    assert_eq!(rec.index, 0);
+    let pet = p.get_pet("0".into()).unwrap();
+    assert!(yocto(pet.balance) < before - MILLI + 1);
+    let h = pet.last_reply_hash.unwrap();
+    let proof = p.get_tee_proof(h).unwrap();
+    assert_eq!(proof.signer, R_SIGNER);
+    assert_eq!(proof.request_hash, "45f0ca8cdd467cc8877f56cbcf9ceb0b8bf7fc824feacbf85f6a2a7e47ec3d95");
+}
+#[test] #[should_panic(expected = "registered NEAR AI TEE signer")] fn charge_verified_tampered_response() {
+    let mut p = tee_pet();
+    cv(&mut p, R_PROMPT, R_REQUEST, &R_RESP_HASH.replace("4a8a", "4a8b"), R_SIG);
+}
+#[test] #[should_panic(expected = "registered NEAR AI TEE signer")] fn charge_verified_tampered_request() {
+    let mut p = tee_pet();
+    cv(&mut p, R_PROMPT, &R_REQUEST.replace("Hi Mochi", "Hi M0chi"), R_RESP_HASH, R_SIG);
+}
+#[test] #[should_panic(expected = "registered NEAR AI TEE signer")] fn charge_verified_unregistered_signer() {
+    let mut p = tee_pet();
+    ctx("owner", 0, 0);
+    p.remove_tee_signer(R_MODEL.into(), R_SIGNER.into());
+    cv(&mut p, R_PROMPT, R_REQUEST, R_RESP_HASH, R_SIG);
+}
+#[test] #[should_panic(expected = "prompt_hash")] fn charge_verified_wrong_prompt() {
+    let mut p = tee_pet();
+    cv(&mut p, "Evil prompt", R_REQUEST, R_RESP_HASH, R_SIG);
+}
+#[test] #[should_panic(expected = "only the backend")] fn charge_verified_not_backend() {
+    let mut p = tee_pet();
+    ctx("alice", HOUR, 0);
+    p.charge_verified("0".into(), NearToken::from_yoctonear(MILLI), R_PROMPT.into(), R_REQUEST.into(), R_RESP_HASH.into(), R_SIG.into());
+}
+#[test] #[should_panic(expected = "reply already charged")] fn charge_verified_replay() {
+    let mut p = tee_pet();
+    cv(&mut p, R_PROMPT, R_REQUEST, R_RESP_HASH, R_SIG);
+    cv(&mut p, R_PROMPT, R_REQUEST, R_RESP_HASH, R_SIG);
+}
+#[test] #[should_panic(expected = "owner")] fn add_tee_signer_owner_only() {
+    let mut p = c();
+    ctx("alice", 0, 0);
+    p.add_tee_signer(R_MODEL.into(), R_SIGNER.into());
+}

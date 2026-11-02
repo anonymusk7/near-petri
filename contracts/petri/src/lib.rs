@@ -33,6 +33,7 @@ enum StorageKey {
     ContractMetadata,
     Pets,
     Replies,
+    TeeProofs,
 }
 
 #[near(serializers = [borsh])]
@@ -106,6 +107,30 @@ pub struct Petri {
     next_id: u64,
     /// Charged AI fees accumulated for the operator (pays NEAR AI Cloud off-chain).
     treasury: NearToken,
+    /// Owner-registered NEAR AI Cloud TEE signers: (model id, lowercase 0x address)
+    /// taken from a verified model attestation report.
+    tee_signers: Vec<TeeSigner>,
+    /// Proof of the TEE signature checked on-chain for each `charge_verified` reply.
+    tee_proofs: LookupMap<String, TeeProof>,
+}
+
+#[near(serializers = [borsh, json])]
+#[derive(Clone, Debug, PartialEq)]
+pub struct TeeSigner {
+    pub model: String,
+    pub address: String,
+}
+
+/// What the contract itself checked for a reply: the NEAR AI `provider_tee` ECDSA
+/// signature over `model:sha256(request):sha256(response)`, recovered on-chain.
+#[near(serializers = [borsh, json])]
+#[derive(Clone, Debug, PartialEq)]
+pub struct TeeProof {
+    pub model: String,
+    pub request_hash: String,
+    pub response_hash: String,
+    pub signer: String,
+    pub signature: String,
 }
 
 #[near]
@@ -138,6 +163,8 @@ impl Petri {
             replies: LookupMap::new(StorageKey::Replies),
             next_id: 0,
             treasury: NearToken::from_yoctonear(0),
+            tee_signers: Vec::new(),
+            tee_proofs: LookupMap::new(StorageKey::TeeProofs),
         }
     }
 
@@ -211,6 +238,12 @@ impl Petri {
     pub fn charge(&mut self, token_id: TokenId, cost: NearToken, reply_hash: String) -> ReplyRecord {
         require!(env::predecessor_account_id() == self.backend_id, "only the backend can charge");
         require!(is_valid_hash(&reply_hash), "reply_hash must be 64 lowercase hex chars (sha256)");
+        self.charge_inner(token_id, cost, reply_hash)
+    }
+}
+
+impl Petri {
+    fn charge_inner(&mut self, token_id: TokenId, cost: NearToken, reply_hash: String) -> ReplyRecord {
         require!(!self.replies.contains_key(&reply_hash), "reply already charged");
         require!(!self.asleep(&token_id), "pet is asleep");
 
@@ -232,8 +265,62 @@ impl Petri {
         self.treasury = self.treasury.saturating_add(cost);
         rec
     }
+}
+
+#[near]
+impl Petri {
+
+    /// Backend-only, trust-minimized charge: the contract itself verifies that
+    /// 1. the request bytes hash to the signed request hash and contain this pet's
+    ///    on-chain personality prompt (sha256 == pet.prompt_hash), and
+    /// 2. the NEAR AI Cloud TEE signature over `model:sha256(request):response_hash`
+    ///    recovers (EIP-191 + ecrecover) to a registered TEE signer for that model.
+    /// Only then is the reply debited from the pet's own balance.
+    pub fn charge_verified(&mut self, token_id: TokenId, cost: NearToken, prompt: String,
+                           request: String, response_hash: String, signature: String) -> ReplyRecord {
+        require!(env::predecessor_account_id() == self.backend_id, "only the backend can charge");
+        require!(is_valid_hash(&response_hash), "response_hash must be 64 lowercase hex chars (sha256)");
+        let pet = self.pets.get(&token_id).unwrap_or_else(|| env::panic_str("no such pet"));
+        require!(hex(&env::sha256(prompt.as_bytes())) == pet.prompt_hash, "prompt does not match the pet's on-chain prompt_hash");
+        let req: near_sdk::serde_json::Value = near_sdk::serde_json::from_str(&request)
+            .unwrap_or_else(|_| env::panic_str("request is not JSON"));
+        let model = req["model"].as_str().unwrap_or_else(|| env::panic_str("request has no model")).to_string();
+        let sys = req["messages"][0]["content"].as_str().unwrap_or("");
+        require!(req["messages"][0]["role"] == "system" && sys.contains(prompt.as_str()),
+                 "request system prompt does not contain the pet's prompt");
+        let request_hash = hex(&env::sha256(request.as_bytes()));
+        let text = format!("{model}:{request_hash}:{response_hash}");
+        let signer = recover_eip191(&text, &signature).unwrap_or_else(|| env::panic_str("bad TEE signature"));
+        require!(self.tee_signers.iter().any(|t| t.model == model && t.address == signer),
+                 "signature does not recover to a registered NEAR AI TEE signer for this model");
+        let reply_hash = hex(&env::sha256(text.as_bytes()));
+        let rec = self.charge_inner(token_id, cost, reply_hash.clone());
+        self.tee_proofs.insert(reply_hash, TeeProof { model, request_hash, response_hash, signer, signature });
+        rec
+    }
 
     // ---------- admin ----------
+
+    /// Owner registers a TEE signer address after verifying the model's attestation
+    /// report off-chain (`pnpm preflight`: TDX quote, report_data binding, NVIDIA NRAS).
+    pub fn add_tee_signer(&mut self, model: String, address: String) {
+        self.assert_owner();
+        let a = address.to_lowercase();
+        require!(a.len() == 42 && a.starts_with("0x"), "address must be 0x + 40 hex");
+        if !self.tee_signers.iter().any(|t| t.model == model && t.address == a) {
+            self.tee_signers.push(TeeSigner { model, address: a });
+        }
+    }
+
+    pub fn remove_tee_signer(&mut self, model: String, address: String) {
+        self.assert_owner();
+        let a = address.to_lowercase();
+        self.tee_signers.retain(|t| !(t.model == model && t.address == a));
+    }
+
+    pub fn get_tee_signers(&self) -> Vec<TeeSigner> { self.tee_signers.clone() }
+
+    pub fn get_tee_proof(&self, reply_hash: String) -> Option<TeeProof> { self.tee_proofs.get(&reply_hash).cloned() }
 
     pub fn set_backend(&mut self, backend_id: AccountId) {
         self.assert_owner();
@@ -378,3 +465,31 @@ impl NonFungibleTokenMetadataProvider for Petri {
 
 #[cfg(test)]
 mod tests;
+
+/// Lowercase hex encoding.
+pub fn hex(b: &[u8]) -> String {
+    const D: &[u8; 16] = b"0123456789abcdef";
+    b.iter().flat_map(|x| [D[(x >> 4) as usize] as char, D[(x & 15) as usize] as char]).collect()
+}
+
+fn unhex(s: &str) -> Option<Vec<u8>> {
+    let s = s.strip_prefix("0x").unwrap_or(s);
+    if s.len() % 2 != 0 { return None; }
+    (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).ok()).collect()
+}
+
+/// EIP-191 personal_sign recovery, as used by NEAR AI Cloud `signing_algo=ecdsa`.
+/// Returns the lowercase 0x address of the signer, or None for a malformed signature.
+pub fn recover_eip191(text: &str, sig_hex: &str) -> Option<String> {
+    let sig = unhex(sig_hex)?;
+    if sig.len() != 65 { return None; }
+    let mut msg = format!("\x19Ethereum Signed Message:\n{}", text.len()).into_bytes();
+    msg.extend_from_slice(text.as_bytes());
+    let hash = env::keccak256_array(&msg);
+    let v = match sig[64] { 27 | 28 => sig[64] - 27, 0 | 1 => sig[64], _ => return None };
+    let mut rs = [0u8; 64];
+    rs.copy_from_slice(&sig[..64]);
+    let pk = env::ecrecover(&hash, &rs, v, true)?;
+    let addr = env::keccak256_array(&pk);
+    Some(format!("0x{}", hex(&addr[12..])))
+}

@@ -11,12 +11,34 @@ Everything below runs offline except step 4 (read-only NEAR RPC). No API key nee
 ```
 pnpm i
 ```
-1. Run `pnpm test`. You should see `42 passed` for Rust and `pass 16` for JS. The JS tests include offline re-verification of the **real** recorded NEAR AI evidence and a full replay of the TEE client against the recorded bytes.
+1. Run `pnpm test`. You should see `51 passed` for Rust (including 9 `charge_verified` tests that ecrecover a **real** recorded NEAR AI signature and reject a tampered response, a tampered request, a wrong prompt, an unregistered signer, a non-backend caller and a replay) and `pass 16` for JS. The JS tests include offline re-verification of the **real** recorded NEAR AI evidence and a full replay of the TEE client against the recorded bytes.
 2. Run `pnpm verify examples/recorded/reply-1.json`. You should see 8 ✓ checks (hashes, request shape, Intel TDX quotes via dcap-qvl, NVIDIA NRAS GPU verdict, preflight-before-completion, provider_tee signature, Petri receipt) and `=> VALID` (exit 0). `pnpm verify examples/recorded/reply-[0-9].json` checks all three (exit 0).
 3. Run `pnpm verify examples/recorded/reply-1.tampered.json` (same reply with the text swapped for a scam message). You should see `✗ response bytes hash to response_hash`, `✗ provider_tee signature … signature text does not match`, and `=> INVALID` (exit 1).
 4. Run `pnpm demo:testnet`. It reads pet #0 "Mochi" from `petri-1793597952.testnet` over RPC: balance ≈ 0.483 NEAR, `replies 3`. For each recorded reply it should show `on-chain get_reply: index N, cost 0.0011.. NEAR` with ✓ on-chain receipt matches record and ✓ TEE evidence verifies. The last line is `=> ALL RECORDED REPLIES CHARGED ON-CHAIN AND TEE-VERIFIED`.
 5. Run `pnpm chat:mock`. You should see 3 offline mock replies from "Mochi", the balance going down after each one, and `verify=true`.
 6. Optional, needs a NEAR AI key, free: `NEAR_AI_API_KEY=... pnpm preflight`. This runs the live attestation (no completion is sent) and prints gateway and model signers with `TCB UpToDate` and `GPU 8xHOPPER NRAS overall=true`.
+
+7. Run `pnpm demo:v2`. It reads `v2.petri-1793597952.testnet` over RPC. You should see the registered TEE signer `0xfe00…337e`, pet #0 Mochi with `replies 3`, and for each real reply `✓ on-chain ecrecover → 0xfe0071895500a9755c18044948ab4f4e1a7f337e`. The last line is `=> EVERY CHARGED REPLY CARRIES A NEAR AI TEE SIGNATURE VERIFIED BY THE CONTRACT`.
+
+## On-chain TEE verification (v2: `charge_verified`)
+In v1 the contract trusted the backend's `reply_hash`. In v2 **the contract itself verifies the NEAR AI Cloud TEE signature** before it lets the pet pay for a thought:
+1. `sha256(prompt) == pet.prompt_hash`. The pet's personality is fixed at mint and lives on-chain.
+2. The request JSON's system message contains that prompt, and `request_hash = sha256(request bytes)` is computed on-chain.
+3. `text = model:request_hash:response_hash`, then EIP-191 `keccak256`, then `env::ecrecover`, then the address. It must equal a signer that the owner registered for that model (`add_tee_signer`) after verifying the model attestation off-chain (`pnpm preflight`: TDX quote, report_data = signer‖nonce, NVIDIA NRAS).
+4. Only then is the cost debited from the pet's own balance, and a `TeeProof {model, request_hash, response_hash, signer, signature}` is stored (`get_tee_proof(reply_hash)`, where `reply_hash = sha256(text)`).
+
+Cost: about **3.07 Tgas** per verified reply (≈0.0003 NEAR).
+
+| v2 testnet | tx |
+| - | - |
+| `v2.petri-1793597952.testnet` created by the owner (faucet rate-limited) | `G34ECcixpoLy3SrG3EQuBoFkvK9vEaBgomha3MghHUi` |
+| Deploy + `new(owner, backend)` | `7KRoqMzLjDYVMreWd1EMtzoBpjucFVwP2NH3qqPB4pQ1` |
+| `add_tee_signer(DeepSeek-V4.1-Flash-1017, 0xfe00…337e)` | `GurMfMTk2qPfjJmkAeQMZJJYziV9YFmo8RiWvf4xj2GJ` |
+| `mint_pet("Mochi", d691db07…)`, 0.5 NEAR | `ENUmLpeyArGcoMLUF9EU55Mxit4nD2bEgPFQ3k2E9Krk` |
+| `charge_verified` reply-1 / 2 / 3 (real TEE signatures) | `FzZ1KTAPa7SYECjXfUfofhTimvwRD9GMvHst46zPvWgn`, `G6ApPumCUYTGpaePvTpttcSeRH4rwhvwf9MuJe2CWioW`, `BHf2psxhF3i7CGBY3zPQhmBps8bnAaAEUBr3BFZSC9qU` |
+| Negative: reply-2 with one hex digit of `response_hash` flipped → `Smart contract panicked: signature does not recover to a registered NEAR AI TEE signer for this model` | rejected on-chain |
+
+Limits: the response *body* is not sent on-chain (only its hash, which is signed). Body-to-hash is checked off-chain by `pnpm verify`. Attestation itself is verified off-chain; the on-chain trust root is the owner-registered signer.
 
 ## Testnet deployment (recorded)
 | What | Account / tx |
