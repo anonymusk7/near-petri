@@ -776,3 +776,27 @@ fn rekey_ok(p: &mut Petri, who: &str) -> AccountId {
     ctx("bob", 2, 1); let _ = p.request_foreign_signature("0".into(), H.into());
     assert_eq!(p.foreign_path("0".into()), "pet-0", "the address is tied to the token, not to the owner");
 }
+
+/// Round-4 upgrade of a live round-3 contract: `migrate` re-reads the same layout,
+/// keeps every pet, and pins the legacy pet account's key holder to its owner.
+#[test] fn migrate_keeps_pets_and_pins_legacy_key_holder() {
+    let p = acct_pet();
+    env::storage_remove(b"kh:0"); // round-3 pets had no key holder
+    let before = p.get_pet("0".into()).unwrap();
+    env::state_write(&p);
+    drop(p); // flush collections, like the end of a real call
+    testing_env!(VMContextBuilder::new().current_account_id(acc("petri")).predecessor_account_id(acc("petri")).build());
+    let m = Petri::migrate();
+    let after = m.get_pet("0".into()).unwrap();
+    assert_eq!((after.name, after.balance, after.replies, after.owner_id.clone(), after.pet_account),
+               (before.name, before.balance, before.replies, before.owner_id, before.pet_account));
+    assert!(after.pet_key_active);
+    assert_eq!(env::storage_read(b"kh:0"), Some(after.owner_id.as_bytes().to_vec()));
+    let total = m.get_config().total_pets;
+    env::state_write(&m);
+    drop(m);
+    let mut m2 = Petri::migrate(); // idempotent
+    assert_eq!(m2.get_config().total_pets, total);
+    give(&mut m2, "alice", "bob");
+    assert!(!m2.get_pet("0".into()).unwrap().pet_key_active);
+}

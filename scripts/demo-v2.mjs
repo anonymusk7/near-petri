@@ -69,6 +69,14 @@ const onlyCharge = keys.length === 1 && fc[0].FunctionCall && fc[0].FunctionCall
 console.log(`pet #1 ${p1.name}: own account ${p1.pet_account} (${(Number(BigInt(acct.amount) / 10n ** 18n) / 1e6).toFixed(6)} NEAR for its own gas), replies ${p1.replies}`);
 console.log(`  keys: ${keys.length}, ${JSON.stringify(fc[0])} ${onlyCharge ? '✓ only charge_verified on ' + CONTRACT + ', no full-access key' : '✗'}`);
 ok &&= onlyCharge && p1.replies >= 1;
+// Round 4 upgrade (deploy + migrate, same address): the live code is the reproducible
+// `pnpm build:contract:deploy` wasm with the transfer fix, and the pets survived the migration.
+const ROUND4_CODE_HASH = 'EyeBLJwDhX4fMbJkrUvjUZ2wxSSG7WvQ4BQJyBjyuch';
+const live = await rpc({ request_type: 'view_account', finality: 'final', account_id: CONTRACT });
+const r4 = live.code_hash === ROUND4_CODE_HASH && pets[0].name === 'Mochi' && pets[1].name === 'Moss'
+  && typeof pets[1].pet_key_active === 'boolean' && pets[1].pet_key_active === true;
+ok &&= r4;
+console.log(`round 4 code ${live.code_hash} ${live.code_hash === ROUND4_CODE_HASH ? '✓ = pnpm build:contract:deploy' : '✗ expected ' + ROUND4_CODE_HASH}; Mochi #0 + Moss #1 kept; Moss pet_key_active=${pets[1].pet_key_active} ${r4 ? '✓ (key frozen on sale, rekey_pet)' : '✗'}`);
 // Tip from any chain: pet #1's EVM address comes from NEAR Chain Signatures; the recorded MPC signature must recover to it.
 const { petEvmAddress, signedSweep, loadNetwork } = await import('../lib/tip.mjs');
 const { ethers } = await import('ethers');
@@ -77,5 +85,5 @@ const cs = await petEvmAddress({ ...loadNetwork('testnet'), petri: CONTRACT }, '
 const st = signedSweep(ethers.Transaction.from(art.signed.unsigned), art.signed.mpc_signature, cs.address);
 ok &&= cs.address === art.evm_address;
 console.log(`pet #1 EVM address via Chain Signatures: ${cs.address} ${cs.address === art.evm_address ? '✓' : '✗'}; MPC-signed sweep (NEAR tx ${art.signed.near_tx.slice(0, 8)}…) recovers to ${st.from} ✓`);
-console.log(ok ? '=> EVERY CHARGED REPLY IS TEE-VERIFIED ON-CHAIN, THE ARENA RESULT REPRODUCES, THE PET SIGNS ON OTHER CHAINS' : '=> MISMATCH');
+console.log(ok ? '=> EVERY CHARGED REPLY IS TEE-VERIFIED ON-CHAIN, THE ARENA RESULT REPRODUCES, THE PET SIGNS ON OTHER CHAINS, ROUND-4 CODE IS LIVE' : '=> MISMATCH');
 process.exit(ok ? 0 : 1);

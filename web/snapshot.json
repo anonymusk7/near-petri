@@ -18,9 +18,10 @@
       "replies": 4,
       "last_reply_hash": "d39519060d07faefb514b43f41c1f970be3b0a82f5667b41e2be2cb886d11792",
       "revives": 0,
-      "asleep": false,
+      "asleep": true,
       "pet_account": null,
       "arena_wins": 0,
+      "pet_key_active": false,
       "tip": {
         "chain": "Ethereum Sepolia (any EVM)",
         "key": "secp256k1:2FEjn2vkSR7w3bRyeAwDoScVLfMeUhkLKRUZm7TycR9mZPKcR3SZAKNvmmJFW9XqZPTQjoQLxvKNnZwf8zNWFHfd",
@@ -37,16 +38,17 @@
       "replies": 2,
       "last_reply_hash": "b6e0e996d8c488a540523f9638372d75857d1efd680306c901cc4fc98b59add5",
       "revives": 0,
-      "asleep": false,
+      "asleep": true,
       "pet_account": "pet-1.v2.petri-1793597952.testnet",
       "arena_wins": 1,
-      "account_balance": "99112957763910900000000",
+      "pet_key_active": true,
+      "account_balance": "97825071648657100000000",
       "keys": [
         {
           "public_key": "ed25519:DGA4Ek4MKEHkMehEMq2uCpmbdQMJAG8mJXmKqdRv4gDr",
           "permission": {
             "FunctionCall": {
-              "allowance": "249112957763910900000000",
+              "allowance": "247825071648657100000000",
               "method_names": [
                 "charge_verified"
               ],
@@ -103,5 +105,5 @@
     "refundTo": "0x5a34926DdBbcC7b64F6f9BC4eaC59779B1DA2615"
   },
   "sleep_threshold": "10000000000000000000000",
-  "fetched_at": "2026-11-02T07:10:54.537Z"
+  "fetched_at": "2026-11-04T07:29:26.629Z"
 }

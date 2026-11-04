@@ -36,7 +36,11 @@ console.log(`pet #${pet.token_id} "${pet.name}"  owner ${pet.owner_id}  balance 
 console.log(`  prompt_hash ${pet.prompt_hash}\n  last_reply_hash ${pet.last_reply_hash}`);
 
 let allOk = true;
-const files = fs.readdirSync(DIR).filter((f) => /^reply-\d+\.json$/.test(f)).sort();
+// The v1 contract (pet #0 Mochi) was charged for reply-1..3 only. Later replies went to the
+// v2 contract (`pnpm demo:v2`), so by default only the v1 ones are checked here.
+const V1_REPLIES = (process.env.PETRI_REPLIES ?? (CONTRACT === DEFAULT_CONTRACT ? '1,2,3' : '')).split(',').filter(Boolean);
+const files = fs.readdirSync(DIR).filter((f) => /^reply-\d+\.json$/.test(f))
+  .filter((f) => !V1_REPLIES.length || V1_REPLIES.includes(f.match(/\d+/)[0])).sort();
 for (const f of files) {
   const rec = JSON.parse(fs.readFileSync(path.join(DIR, f), 'utf8'));
   const onChain = await view('get_reply', { reply_hash: rec.reply_hash });

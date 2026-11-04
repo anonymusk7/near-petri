@@ -145,24 +145,6 @@ pub struct Petri {
     mpc_id: AccountId,
 }
 
-/// Previous state layout (before arena + chain signatures), for `migrate`.
-#[near(serializers = [borsh])]
-pub struct PetriV2 {
-    tokens: NonFungibleToken,
-    metadata: LazyOption<NFTContractMetadata>,
-    owner_id: AccountId,
-    backend_id: AccountId,
-    sleep_threshold: NearToken,
-    hunger_ns: u64,
-    pets: LookupMap<TokenId, Pet>,
-    replies: LookupMap<String, ReplyRecord>,
-    next_id: u64,
-    treasury: NearToken,
-    tee_signers: Vec<TeeSigner>,
-    tee_proofs: LookupMap<String, TeeProof>,
-    pet_accounts: LookupMap<TokenId, AccountId>,
-}
-
 /// The exact system prompt every Petri reply must be built on. The contract
 /// rebuilds it from the pet's on-chain name + personality and requires the TEE-
 /// signed request to use it verbatim, so a reply made for one pet can never be
@@ -279,20 +261,23 @@ impl Petri {
         }
     }
 
-    /// One-shot state upgrade from the previous layout (adds arena + MPC config).
+    /// State upgrade from round 3 (arena + chain signatures) to round 4 (pet key
+    /// frozen on transfer + `rekey_pet`). The root layout is unchanged, so this
+    /// re-reads the current state (the deploy+migrate batch reverts if it does not
+    /// decode) and pins the key holder of every existing pet account to its current
+    /// NFT owner, so the transfer rule applies to legacy pets from now on.
+    /// Idempotent: pets that already have a key holder are left alone.
     #[private]
     #[init(ignore_state)]
     pub fn migrate() -> Self {
-        let o: PetriV2 = env::state_read().unwrap_or_else(|| env::panic_str("no previous state"));
-        Self {
-            tokens: o.tokens, metadata: o.metadata, owner_id: o.owner_id, backend_id: o.backend_id,
-            sleep_threshold: o.sleep_threshold, hunger_ns: o.hunger_ns, pets: o.pets, replies: o.replies,
-            next_id: o.next_id, treasury: o.treasury, tee_signers: o.tee_signers, tee_proofs: o.tee_proofs,
-            pet_accounts: o.pet_accounts,
-            arena_rounds: LookupMap::new(StorageKey::ArenaRounds), arena_count: 0,
-            arena_used: LookupMap::new(StorageKey::ArenaUsed), arena_wins: LookupMap::new(StorageKey::ArenaWins),
-            mpc_id: default_mpc(),
+        let mut s: Petri = env::state_read().unwrap_or_else(|| env::panic_str("no previous state"));
+        for id in 0..s.next_id {
+            let token_id = id.to_string();
+            if s.tokens.owner_by_id.get(&token_id).is_some() {
+                s.pin_key_holder(&token_id);
+            }
         }
+        s
     }
 
     // ---------- pet lifecycle ----------
