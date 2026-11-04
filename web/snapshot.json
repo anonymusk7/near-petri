@@ -33,22 +33,22 @@
       "owner_id": "petri-1793597952.testnet",
       "name": "Moss",
       "prompt_hash": "e9947b34bb71765dfb205786be8807bcf7fda643a6b397e04515b765450a87a0",
-      "balance": "287094000000000000000000",
-      "last_fed_ns": "1793601234633055705",
-      "replies": 2,
-      "last_reply_hash": "b6e0e996d8c488a540523f9638372d75857d1efd680306c901cc4fc98b59add5",
-      "revives": 0,
-      "asleep": true,
+      "balance": "294485000000000000000000",
+      "last_fed_ns": "1793777820338934943",
+      "replies": 3,
+      "last_reply_hash": "76c1657e86d1744ef8538b31191cd8eb3806c16728ff436680f09fb63c309472",
+      "revives": 1,
+      "asleep": false,
       "pet_account": "pet-1.v2.petri-1793597952.testnet",
       "arena_wins": 1,
       "pet_key_active": true,
-      "account_balance": "97825071648657100000000",
+      "account_balance": "197188131108474600000000",
       "keys": [
         {
           "public_key": "ed25519:DGA4Ek4MKEHkMehEMq2uCpmbdQMJAG8mJXmKqdRv4gDr",
           "permission": {
             "FunctionCall": {
-              "allowance": "247825071648657100000000",
+              "allowance": "247188131108474600000000",
               "method_names": [
                 "charge_verified"
               ],
@@ -105,5 +105,5 @@
     "refundTo": "0x5a34926DdBbcC7b64F6f9BC4eaC59779B1DA2615"
   },
   "sleep_threshold": "10000000000000000000000",
-  "fetched_at": "2026-11-04T07:29:26.629Z"
+  "fetched_at": "2026-11-04T07:38:16.154Z"
 }

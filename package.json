@@ -22,7 +22,8 @@
     "tip:prepare": "node scripts/tip-prepare.mjs",
     "web:install": "pnpm --dir web install --frozen-lockfile",
     "web:build": "pnpm web:install && pnpm --dir web build",
-    "web": "pnpm web:build && node web/server.mjs"
+    "web": "pnpm web:build && node web/server.mjs",
+    "record:moss": "MOCK_AI=0 node scripts/record-moss.mjs"
   },
   "dependencies": {
     "@phala/dcap-qvl": "0.7.0",
