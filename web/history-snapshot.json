@@ -1,0 +1,130 @@
+{
+  "contract": "v2.petri-1793597952.testnet",
+  "fetched_at": "2026-11-04T07:02:41.341Z",
+  "events": [
+    {
+      "tx": "ENUmLpeyArGcoMLUF9EU55Mxit4nD2bEgPFQ3k2E9Krk",
+      "ts": "1793600952666542724",
+      "ok": true,
+      "by": "petri-1793597952.testnet",
+      "kind": "mint",
+      "method": "mint_pet",
+      "token_id": "0",
+      "to": "petri-1793597952.testnet",
+      "amount": "500000000000000000000000"
+    },
+    {
+      "tx": "FzZ1KTAPa7SYECjXfUfofhTimvwRD9GMvHst46zPvWgn",
+      "ts": "1793600957531599641",
+      "ok": true,
+      "by": "petri-backend-1793597952.testnet",
+      "kind": "charge",
+      "method": "charge_verified",
+      "token_id": "0",
+      "amount": "1150000000000000000000"
+    },
+    {
+      "tx": "G6ApPumCUYTGpaePvTpttcSeRH4rwhvwf9MuJe2CWioW",
+      "ts": "1793600962397093889",
+      "ok": true,
+      "by": "petri-backend-1793597952.testnet",
+      "kind": "charge",
+      "method": "charge_verified",
+      "token_id": "0",
+      "amount": "1147000000000000000000"
+    },
+    {
+      "tx": "BHf2psxhF3i7CGBY3zPQhmBps8bnAaAEUBr3BFZSC9qU",
+      "ts": "1793600967213964678",
+      "ok": true,
+      "by": "petri-backend-1793597952.testnet",
+      "kind": "charge",
+      "method": "charge_verified",
+      "token_id": "0",
+      "amount": "1130000000000000000000"
+    },
+    {
+      "tx": "BUxc5RgrnLS4dqDGwvTdNkUyfDxHs8uR9VgHUi7zFTq2",
+      "ts": "1793601233991702658",
+      "ok": true,
+      "by": "petri-1793597952.testnet",
+      "kind": "mint",
+      "method": "mint_pet_with_account",
+      "token_id": "1",
+      "to": "petri-1793597952.testnet",
+      "amount": "400000000000000000000000"
+    },
+    {
+      "tx": "BBXro5CMCnCotZ4oUYMpU2hdDZXLWvRgE3z2CgKegxZG",
+      "ts": "1793601307739253756",
+      "ok": true,
+      "by": "pet-1.v2.petri-1793597952.testnet",
+      "kind": "charge",
+      "method": "charge_verified",
+      "token_id": "1",
+      "amount": "1202000000000000000000"
+    },
+    {
+      "tx": "23MFXA2fkdPgNpmirLJt6kcxZjZYrCqszfUEyPux71jV",
+      "ts": "1793603196916991099",
+      "ok": true,
+      "by": "petri-1793597952.testnet",
+      "kind": "other",
+      "method": "set_prompt",
+      "token_id": "1",
+      "amount": "0"
+    },
+    {
+      "tx": "3aB2ktZ4Dox99TiDti8BLZrFjsAmFmMi2dCZjzZZs1LW",
+      "ts": "1793603201114038990",
+      "ok": true,
+      "by": "petri-backend-1793597952.testnet",
+      "kind": "charge",
+      "method": "charge_verified",
+      "token_id": "0",
+      "amount": "1151000000000000000000"
+    },
+    {
+      "tx": "2xPs1k2q684wF6GVLCQ2Nt1TfPvjb45VuiXytZnyFfA2",
+      "ts": "1793603204640377892",
+      "ok": true,
+      "by": "pet-1.v2.petri-1793597952.testnet",
+      "kind": "charge",
+      "method": "charge_verified",
+      "token_id": "1",
+      "amount": "1174000000000000000000"
+    },
+    {
+      "tx": "3WENtHQS3q6Cv9qGscGLw3fDPaxioGfYndXZVdsUdJso",
+      "ts": "1793603208903535168",
+      "ok": true,
+      "by": "petri-backend-1793597952.testnet",
+      "kind": "arena",
+      "method": "arena_settle",
+      "token_id": "0",
+      "won": false
+    },
+    {
+      "tx": "3WENtHQS3q6Cv9qGscGLw3fDPaxioGfYndXZVdsUdJso",
+      "ts": "1793603208903535168",
+      "ok": true,
+      "by": "petri-backend-1793597952.testnet",
+      "kind": "arena",
+      "method": "arena_settle",
+      "token_id": "1",
+      "won": true
+    },
+    {
+      "tx": "7TueePpC1tA4skZkQy2fATJRHZfGEtDcuBLjEswtSDXk",
+      "ts": "1793603316281013642",
+      "ok": true,
+      "by": "petri-1793597952.testnet",
+      "kind": "other",
+      "method": "request_foreign_signature",
+      "token_id": "1",
+      "amount": "1"
+    }
+  ],
+  "source": "archival RPC (known txs)",
+  "tx_count": 11
+}

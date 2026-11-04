@@ -590,3 +590,189 @@ fn real_arena() -> Petri {
     ctx("backend", HOUR, 0);
     p.charge_verified("1".into(), NearToken::from_yoctonear(MILLI), R_PROMPT.into(), rq, sha(&rs), sg);
 }
+
+// ---------- transfer: control passes to the new owner, the seller keeps nothing ----------
+const PK2: &str = "ed25519:4F9pq1KhzGHRVdaCeGdpkkLM7MmRbMfmVzdkWV8jiGgE";
+const PET0: &str = "pet-0.petri.testnet";
+/// Resolve a callback with the given promise results (predecessor = the contract itself).
+fn cb(t: u64, results: Vec<PromiseResult>) {
+    testing_env!(VMContextBuilder::new().current_account_id(acc("petri")).predecessor_account_id(acc("petri")).block_timestamp(t).build(),
+        near_sdk::test_vm_config(), near_sdk::RuntimeFeesConfig::test(), Default::default(), results);
+}
+fn give(p: &mut Petri, from: &str, to: &str) { ctx(from, 1, 1); p.nft_transfer(acc(to), "0".into(), None, None); }
+fn rekey_ok(p: &mut Petri, who: &str) -> AccountId {
+    ctx(who, 2, PET_ACCOUNT_FUND);
+    let _ = p.rekey_pet("0".into(), PK2.parse().unwrap());
+    let account: AccountId = "pet-0-1.petri.testnet".parse().unwrap();
+    cb(3, vec![PromiseResult::Successful(vec![])]);
+    assert!(p.on_pet_rekey("0".into(), account.clone(), acc(who), U128(PET_ACCOUNT_FUND)));
+    account
+}
+
+#[test] fn transfer_moves_balance_and_freezes_sellers_pet_key() {
+    let mut p = acct_pet();
+    assert!(p.get_pet("0".into()).unwrap().pet_key_active);
+    let before = p.get_pet("0".into()).unwrap().balance;
+    give(&mut p, "alice", "bob");
+    let v = p.get_pet("0".into()).unwrap();
+    assert_eq!(v.owner_id, acc("bob"));
+    assert_eq!(v.balance, before, "the whole pet balance stays with the pet, now bob's");
+    assert_eq!(v.pet_account.unwrap().as_str(), PET0);
+    assert!(!v.pet_key_active, "alice chose the pet key at mint, so it stops working");
+}
+#[test] #[should_panic(expected = "set by a previous owner")] fn seller_pet_key_cannot_charge_after_transfer() {
+    let mut p = acct_pet();
+    give(&mut p, "alice", "bob");
+    cv_as(&mut p, PET0);
+}
+/// A charge is a single synchronous receipt: one the seller signed with the old
+/// pet key before the sale but that lands after `nft_transfer` sees the new owner
+/// and is refused; the one that landed before stays charged (to the treasury,
+/// never to the seller).
+#[test] fn charge_in_flight_across_transfer() {
+    let mut p = acct_pet();
+    cv_as(&mut p, PET0);
+    let after_first = p.get_pet("0".into()).unwrap().balance;
+    let treasury = p.get_config().treasury;
+    give(&mut p, "alice", "bob");
+    let (rq, rs, sg) = raw(5);
+    testing_env!(VMContextBuilder::new().current_account_id(acc("petri")).predecessor_account_id(PET0.parse().unwrap()).block_timestamp(HOUR).build());
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        p.charge_verified("0".into(), NearToken::from_yoctonear(MILLI), R_PROMPT.into(), rq, sha(&rs), sg)
+    }));
+    let msg = r.expect_err("old pet key must be refused after the transfer");
+    let msg = msg.downcast_ref::<String>().cloned().or_else(|| msg.downcast_ref::<&str>().map(|s| s.to_string())).unwrap_or_default();
+    assert!(msg.contains("set by a previous owner"), "refused for the wrong reason: {msg}");
+    let v = p.get_pet("0".into()).unwrap();
+    assert_eq!((v.balance, v.replies, v.owner_id), (after_first, 1, acc("bob")));
+    assert_eq!(p.get_config().treasury, treasury);
+}
+#[test] fn new_owner_rekeys_and_charges_from_the_new_account() {
+    let mut p = acct_pet();
+    give(&mut p, "alice", "bob");
+    let new_acc = rekey_ok(&mut p, "bob");
+    let v = p.get_pet("0".into()).unwrap();
+    assert_eq!(v.pet_account.as_ref(), Some(&new_acc));
+    assert!(v.pet_key_active);
+    assert_eq!(cv_as(&mut p, new_acc.as_str()).index, 0);
+}
+#[test] #[should_panic(expected = "only this pet's own account")] fn old_account_dead_after_rekey() {
+    let mut p = acct_pet();
+    give(&mut p, "alice", "bob");
+    rekey_ok(&mut p, "bob");
+    cv_as(&mut p, PET0);
+}
+#[test] #[should_panic(expected = "only the pet owner can rekey")] fn seller_cannot_rekey_after_transfer() {
+    let mut p = acct_pet();
+    give(&mut p, "alice", "bob");
+    ctx("alice", 2, PET_ACCOUNT_FUND); let _ = p.rekey_pet("0".into(), PK2.parse().unwrap());
+}
+#[test] #[should_panic(expected = "at least 0.1 NEAR")] fn rekey_needs_fund() {
+    let mut p = acct_pet();
+    give(&mut p, "alice", "bob");
+    ctx("bob", 2, PET_ACCOUNT_FUND - 1); let _ = p.rekey_pet("0".into(), PK2.parse().unwrap());
+}
+#[test] #[should_panic(expected = "has no own account")] fn rekey_legacy_pet() {
+    let mut p = with_pet(); ctx("alice", 2, PET_ACCOUNT_FUND); let _ = p.rekey_pet("0".into(), PK2.parse().unwrap());
+}
+/// Promise pending -> nft_transfer -> callback resolves: the seller started a
+/// rekey (their own new key), sold the pet while account creation was in flight,
+/// then the callback succeeded. The new account must NOT be linked.
+#[test] fn rekey_in_flight_across_transfer_is_not_linked() {
+    let mut p = acct_pet();
+    ctx("alice", 1, PET_ACCOUNT_FUND); let _ = p.rekey_pet("0".into(), PK2.parse().unwrap());
+    let balance = p.get_pet("0".into()).unwrap().balance;
+    give(&mut p, "alice", "bob");
+    cb(3, vec![PromiseResult::Successful(vec![])]);
+    assert!(!p.on_pet_rekey("0".into(), "pet-0-1.petri.testnet".parse().unwrap(), acc("alice"), U128(PET_ACCOUNT_FUND)));
+    assert!(get_logs().iter().any(|l| l.contains("no longer owns it")));
+    let v = p.get_pet("0".into()).unwrap();
+    assert_eq!(v.pet_account.unwrap().as_str(), PET0);
+    assert!(!v.pet_key_active);
+    assert_eq!(v.balance, balance, "the seller's rekey deposit never touched the pet balance");
+    // bob can still rekey; generations never collide with the orphaned account
+    ctx("bob", 4, PET_ACCOUNT_FUND); let _ = p.rekey_pet("0".into(), PK2.parse().unwrap());
+    assert!(get_logs().iter().any(|l| l.contains("creating pet-0-2.petri.testnet for bob.testnet")));
+}
+#[test] fn failed_rekey_refunds_the_caller_and_keeps_old_state() {
+    let mut p = acct_pet();
+    give(&mut p, "alice", "bob");
+    ctx("bob", 2, PET_ACCOUNT_FUND); let _ = p.rekey_pet("0".into(), PK2.parse().unwrap());
+    cb(3, vec![PromiseResult::Failed]);
+    assert!(!p.on_pet_rekey("0".into(), "pet-0-1.petri.testnet".parse().unwrap(), acc("bob"), U128(PET_ACCOUNT_FUND)));
+    assert!(get_logs().iter().any(|l| l.contains("failed; refunding bob.testnet")));
+    assert!(!p.get_pet("0".into()).unwrap().pet_key_active);
+}
+/// Mint promise pending -> transfer -> account creation fails: the 0.1 NEAR fund
+/// is credited to the pet (bob's now), not to alice who paid the mint.
+#[test] fn mint_account_fails_after_transfer_refund_goes_to_pet() {
+    let mut p = acct_pet();
+    let before = yocto(p.get_pet("0".into()).unwrap().balance);
+    give(&mut p, "alice", "bob");
+    cb(3, vec![PromiseResult::Failed]);
+    assert!(!p.on_pet_account("0".into()));
+    let v = p.get_pet("0".into()).unwrap();
+    assert_eq!(v.owner_id, acc("bob"));
+    assert_eq!(yocto(v.balance), before + PET_ACCOUNT_FUND);
+    assert_eq!(v.pet_account, None);
+    // it is a legacy pet now: only the operator's backend charges it, alice's key is useless
+    ctx("backend", HOUR, 0);
+    p.charge("0".into(), NearToken::from_yoctonear(MILLI), H2.into());
+}
+#[test] fn transfer_back_reactivates_original_key() {
+    let mut p = acct_pet();
+    give(&mut p, "alice", "bob");
+    give(&mut p, "bob", "alice");
+    assert!(p.get_pet("0".into()).unwrap().pet_key_active);
+    assert_eq!(cv_as(&mut p, PET0).index, 0);
+}
+#[test] fn rejected_transfer_call_returns_pet_and_key() {
+    let mut p = acct_pet();
+    testing_env!(VMContextBuilder::new().current_account_id(acc("petri")).predecessor_account_id(acc("alice"))
+        .attached_deposit(NearToken::from_yoctonear(1)).prepaid_gas(Gas::from_tgas(100)).build());
+    let _ = p.nft_transfer_call(acc("market"), "0".into(), None, None, "list".into());
+    assert!(!p.get_pet("0".into()).unwrap().pet_key_active, "while the receiver decides, nobody's key charges");
+    cb(2, vec![PromiseResult::Successful(b"true".to_vec())]); // receiver says "give it back"
+    assert!(!p.nft_resolve_transfer(acc("alice"), acc("market"), "0".into(), None));
+    let v = p.get_pet("0".into()).unwrap();
+    assert_eq!(v.owner_id, acc("alice"));
+    assert!(v.pet_key_active);
+}
+#[test] fn legacy_untracked_pet_key_is_pinned_on_first_transfer() {
+    let mut p = acct_pet();
+    env::storage_remove(b"kh:0"); // pets minted before key holders were tracked (e.g. testnet Moss)
+    assert!(p.get_pet("0".into()).unwrap().pet_key_active);
+    give(&mut p, "alice", "bob");
+    assert!(!p.get_pet("0".into()).unwrap().pet_key_active);
+}
+
+// ---------- approvals and the old owner ----------
+#[test] fn no_approvals_exist_to_survive_a_sale() {
+    let p = acct_pet();
+    assert_eq!(p.nft_token("0".into()).unwrap().approved_account_ids, None);
+}
+#[test] #[should_panic(expected = "Approval extension is disabled")] fn market_with_approval_id_cannot_transfer() {
+    let mut p = acct_pet();
+    ctx("market", 1, 1); p.nft_transfer(acc("market"), "0".into(), Some(0), None);
+}
+#[test] #[should_panic(expected = "Approval extension is disabled")] fn old_owner_cannot_transfer_back() {
+    let mut p = acct_pet();
+    give(&mut p, "alice", "bob");
+    ctx("alice", 2, 1); p.nft_transfer(acc("alice"), "0".into(), None, None);
+}
+#[test] #[should_panic(expected = "only the pet owner can change")] fn old_owner_cannot_set_prompt() {
+    let mut p = acct_pet();
+    give(&mut p, "alice", "bob");
+    ctx("alice", 2, 0); p.set_prompt("0".into(), H2.into());
+}
+#[test] #[should_panic(expected = "only the pet owner can sign")] fn old_owner_cannot_sign_for_foreign_address() {
+    let mut p = acct_pet();
+    give(&mut p, "alice", "bob");
+    ctx("alice", 2, 1); let _ = p.request_foreign_signature("0".into(), H.into());
+}
+#[test] fn new_owner_signs_for_foreign_address() {
+    let mut p = acct_pet();
+    give(&mut p, "alice", "bob");
+    ctx("bob", 2, 1); let _ = p.request_foreign_signature("0".into(), H.into());
+    assert_eq!(p.foreign_path("0".into()), "pet-0", "the address is tied to the token, not to the owner");
+}

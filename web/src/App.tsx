@@ -18,6 +18,9 @@ import { Spinner } from "@/components/ui/spinner"
 import { Toaster } from "@/components/ui/sonner"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
+import { api, explorer, near, short } from "@/lib/format"
+import { PetHistory } from "@/PetHistory"
+import { OwnerPage } from "@/OwnerPage"
 
 type Perm = { FunctionCall?: { allowance: string | null; receiver_id: string; method_names: string[] } } | string
 type Pet = {
@@ -40,17 +43,7 @@ type Msg =
   | { kind: "verified"; r: Verified }
   | { kind: "mock"; text: string; cost: string }
 
-const near = (y: string | bigint) => (Number(BigInt(y) / 10n ** 18n) / 1e6).toFixed(4)
 const FULL = 5n * 10n ** 23n // 0.5 NEAR = a full belly in the UI
-const explorer = (tx: string) => `https://testnet.nearblocks.io/txns/${tx}`
-const short = (s: string, n = 6) => (s.length > 2 * n + 1 ? `${s.slice(0, n)}…${s.slice(-n)}` : s)
-
-async function api<T>(path: string, body?: unknown): Promise<T> {
-  const r = await fetch(path, body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : undefined)
-  const j = await r.json()
-  if (!r.ok) throw new Error(j.error ?? r.statusText)
-  return j
-}
 
 function PetFace({ pet, className }: { pet: Pet; className?: string }) {
   const sleeping = pet.sim_asleep
@@ -167,6 +160,7 @@ export function App() {
   const [msgs, setMsgs] = useState<Record<string, Msg[]>>({})
   const [text, setText] = useState("")
   const [busy, setBusy] = useState(false)
+  const [view, setView] = useState<"chat" | "history" | "owner">("chat")
   const bottom = useRef<HTMLDivElement>(null)
 
   const refresh = useCallback(() => api<State>("/api/state").then(setSt).catch((e) => toast.error(e.message)), [])
@@ -265,14 +259,24 @@ export function App() {
               <div className="flex items-center gap-3">
                 {pet ? <PetFace pet={pet} className="size-10" /> : <Skeleton className="size-10 rounded-full" />}
                 <div className="flex flex-col gap-0.5">
-                  <CardTitle>{pet ? `Chat with ${pet.name}` : "Loading…"}</CardTitle>
+                  <CardTitle>{pet ? (view === "chat" ? `Chat with ${pet.name}` : view === "history" ? `${pet.name}'s history` : `${pet.name}: owner page`) : "Loading…"}</CardTitle>
                   <CardDescription>
                     {pet?.pet_account ? `Replies are paid by ${pet.pet_account}` : "Replies are charged by the Petri backend"}
                   </CardDescription>
                 </div>
+                <div className="ml-auto flex gap-1">
+                  {(["chat", "history", "owner"] as const).map((v) => (
+                    <Button key={v} size="sm" variant={view === v ? "default" : "ghost"} onClick={() => setView(v)}>
+                      {v === "chat" ? "Chat" : v === "history" ? "History" : "Owner"}
+                    </Button>
+                  ))}
+                </div>
               </div>
             </CardHeader>
             <Separator />
+            {view === "history" && pet && <ScrollArea className="h-[64svh]"><PetHistory key={pet.token_id} tokenId={pet.token_id} petName={pet.name} /></ScrollArea>}
+            {view === "owner" && pet && <OwnerPage key={pet.token_id} tokenId={pet.token_id} />}
+            {view === "chat" && <>
             <CardContent className="flex-1 p-0">
               <ScrollArea className="h-[52svh]">
                 <div className="flex flex-col gap-3 p-4">
@@ -315,6 +319,7 @@ export function App() {
                 </Button>
               </form>
             </CardFooter>
+            </>}
           </Card>
         </div>
         <footer className="text-xs text-muted-foreground">

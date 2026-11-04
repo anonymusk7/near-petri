@@ -29,6 +29,11 @@ pub const PET_ACCOUNT_FUND: u128 = ONE_NEAR / 10;
 pub const PET_KEY_ALLOWANCE: u128 = ONE_NEAR / 4;
 /// The only method the pet's key may call.
 pub const PET_KEY_METHOD: &str = "charge_verified";
+/// Raw storage prefixes (outside the root state struct, so no migration is needed):
+/// `kh:<id>` = the NFT owner who set the pet account's current key,
+/// `kg:<id>` = how many times the pet has been re-keyed.
+const KEY_HOLDER_PREFIX: &str = "kh:";
+const KEY_GEN_PREFIX: &str = "kg:";
 
 #[derive(BorshStorageKey)]
 #[near]
@@ -86,6 +91,9 @@ pub struct PetView {
     pub pet_account: Option<AccountId>,
     /// Arena rounds this pet has won.
     pub arena_wins: u32,
+    /// True if `pet_account` may charge right now: its key was set by the current
+    /// NFT owner. False after a transfer until the new owner calls `rekey_pet`.
+    pub pet_key_active: bool,
 }
 
 #[near(serializers = [json])]
@@ -312,6 +320,7 @@ impl Petri {
         pet.balance = pet.balance.saturating_sub(fund);
         let account: AccountId = self.pet_account_id(&token_id).parse().unwrap();
         self.pet_accounts.insert(token_id.clone(), account.clone());
+        self.set_key_holder(&token_id, &env::predecessor_account_id());
         Promise::new(account.clone())
             .create_account()
             .transfer(fund)
@@ -331,10 +340,60 @@ impl Petri {
     pub fn on_pet_account(&mut self, token_id: TokenId) -> bool {
         if matches!(env::promise_result(0), PromiseResult::Successful(_)) { return true; }
         self.pet_accounts.remove(&token_id);
+        env::storage_remove(format!("{KEY_HOLDER_PREFIX}{token_id}").as_bytes());
         let pet = self.pet_mut(&token_id);
         pet.balance = pet.balance.saturating_add(NearToken::from_yoctonear(PET_ACCOUNT_FUND));
         env::log_str(&format!("pet account creation failed for {token_id}; refunded to pet balance"));
         false
+    }
+
+    /// After buying a pet, the new NFT owner gives it a fresh account with a key
+    /// only they know. The old account's key was chosen by a previous owner, so
+    /// charges from it are refused as soon as the NFT changes hands (see
+    /// `charge_verified`). The contract cannot delete keys on an account it does
+    /// not control, so it creates `pet-<id>-<gen>.<contract>` instead and, once
+    /// that succeeds, points the pet at it. Attach >= 0.1 NEAR: all of it funds
+    /// the new account (the pet's gas).
+    #[payable]
+    pub fn rekey_pet(&mut self, token_id: TokenId, pet_key: PublicKey) -> Promise {
+        let by = env::predecessor_account_id();
+        require!(self.owner_of(&token_id) == by, "only the pet owner can rekey it");
+        require!(self.pet_accounts.contains_key(&token_id), "this pet has no own account");
+        let fund = env::attached_deposit();
+        require!(fund.as_yoctonear() >= PET_ACCOUNT_FUND, "attach at least 0.1 NEAR to fund the new pet account");
+        let gen = self.key_gen(&token_id) + 1;
+        env::storage_write(format!("{KEY_GEN_PREFIX}{token_id}").as_bytes(), &gen.to_le_bytes());
+        let account: AccountId = format!("pet-{token_id}-{gen}.{}", env::current_account_id()).parse().unwrap();
+        env::log_str(&format!("rekey pet {token_id}: creating {account} for {by}"));
+        Promise::new(account.clone())
+            .create_account()
+            .transfer(fund)
+            .add_access_key_allowance(pet_key, Allowance::limited(NearToken::from_yoctonear(PET_KEY_ALLOWANCE)).unwrap(),
+                                      env::current_account_id(), PET_KEY_METHOD.to_string())
+            .then(Promise::new(env::current_account_id()).function_call(
+                "on_pet_rekey".to_string(),
+                near_sdk::serde_json::to_vec(&near_sdk::serde_json::json!({"token_id": token_id, "account": account, "by": by, "fund": U128(fund.as_yoctonear())})).unwrap(),
+                NearToken::from_yoctonear(0), Gas::from_tgas(5)))
+    }
+
+    /// Callback of `rekey_pet`. The new account is bound only if `by` still owns
+    /// the NFT now: a rekey started by a seller who transferred the pet while the
+    /// promise was in flight must not hand the seller the pet's key again.
+    #[private]
+    pub fn on_pet_rekey(&mut self, token_id: TokenId, account: AccountId, by: AccountId, fund: U128) -> bool {
+        if !matches!(env::promise_result(0), PromiseResult::Successful(_)) {
+            env::log_str(&format!("rekey of pet {token_id} failed; refunding {by}"));
+            Promise::new(by).transfer(NearToken::from_yoctonear(fund.0));
+            return false;
+        }
+        if self.owner_of(&token_id) != by {
+            env::log_str(&format!("rekey of pet {token_id} ignored: {by} no longer owns it; {account} is not linked"));
+            return false;
+        }
+        self.pet_accounts.insert(token_id.clone(), account.clone());
+        self.set_key_holder(&token_id, &by);
+        env::log_str(&format!("pet {token_id} now charges from {account} (key set by {by})"));
+        true
     }
 }
 
@@ -449,7 +508,10 @@ impl Petri {
     pub fn charge_verified(&mut self, token_id: TokenId, cost: NearToken, prompt: String,
                            request: String, response_hash: String, signature: String) -> ReplyRecord {
         match self.pet_accounts.get(&token_id) {
-            Some(a) => require!(&env::predecessor_account_id() == a, "only this pet's own account can charge it"),
+            Some(a) => {
+                require!(&env::predecessor_account_id() == a, "only this pet's own account can charge it");
+                require!(self.pet_key_active(&token_id), "pet key was set by a previous owner: the new owner must call rekey_pet");
+            }
             None => require!(env::predecessor_account_id() == self.backend_id, "only the backend can charge"),
         }
         require!(is_valid_hash(&response_hash), "response_hash must be 64 lowercase hex chars (sha256)");
@@ -632,6 +694,7 @@ impl Petri {
             asleep: self.asleep(&token_id),
             arena_wins: self.arena_wins.get(&token_id).copied().unwrap_or(0),
             pet_account: self.pet_accounts.get(&token_id).cloned(),
+            pet_key_active: self.pet_accounts.contains_key(&token_id) && self.pet_key_active(&token_id),
             token_id,
         })
     }
@@ -676,6 +739,36 @@ impl Petri {
                     pet.last_fed_ns, env::block_timestamp(), self.hunger_ns)
     }
 
+    /// Who set the pet account's current key (None for pets minted before this was tracked).
+    fn key_holder(&self, token_id: &TokenId) -> Option<AccountId> {
+        env::storage_read(format!("{KEY_HOLDER_PREFIX}{token_id}").as_bytes())
+            .and_then(|v| String::from_utf8(v).ok()).and_then(|s| s.parse().ok())
+    }
+
+    fn set_key_holder(&mut self, token_id: &TokenId, holder: &AccountId) {
+        env::storage_write(format!("{KEY_HOLDER_PREFIX}{token_id}").as_bytes(), holder.as_bytes());
+    }
+
+    fn key_gen(&self, token_id: &TokenId) -> u64 {
+        env::storage_read(format!("{KEY_GEN_PREFIX}{token_id}").as_bytes())
+            .and_then(|v| v.try_into().ok()).map(u64::from_le_bytes).unwrap_or(0)
+    }
+
+    /// The pet account may charge only while its key holder is the current NFT owner.
+    /// Untracked legacy pets count as active until their first transfer pins the holder.
+    fn pet_key_active(&self, token_id: &TokenId) -> bool {
+        self.key_holder(token_id).map_or(true, |h| h == self.owner_of(token_id))
+    }
+
+    /// Called before every transfer: remember who holds the pet key, so the key
+    /// stops working the moment the NFT has a new owner.
+    fn pin_key_holder(&mut self, token_id: &TokenId) {
+        if self.pet_accounts.contains_key(token_id) && self.key_holder(token_id).is_none() {
+            let owner = self.owner_of(token_id);
+            self.set_key_holder(token_id, &owner);
+        }
+    }
+
     /// `pet-<id>.<this contract>`: the pet's own account id.
     fn pet_account_id(&self, token_id: &TokenId) -> String {
         format!("pet-{token_id}.{}", env::current_account_id())
@@ -689,12 +782,14 @@ impl Petri {
 impl NonFungibleTokenCore for Petri {
     #[payable]
     fn nft_transfer(&mut self, receiver_id: AccountId, token_id: TokenId, approval_id: Option<u64>, memo: Option<String>) {
+        self.pin_key_holder(&token_id);
         self.tokens.nft_transfer(receiver_id, token_id, approval_id, memo)
     }
 
     #[payable]
     fn nft_transfer_call(&mut self, receiver_id: AccountId, token_id: TokenId, approval_id: Option<u64>,
                          memo: Option<String>, msg: String) -> PromiseOrValue<bool> {
+        self.pin_key_holder(&token_id);
         self.tokens.nft_transfer_call(receiver_id, token_id, approval_id, memo, msg)
     }
 
