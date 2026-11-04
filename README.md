@@ -11,7 +11,7 @@ Everything below runs offline except step 4 (read-only NEAR RPC). No API key nee
 ```
 pnpm i
 ```
-1. Run `pnpm test`. You should see `100 passed` for Rust and `pass 34` for JS. The Rust tests include `charge_verified` tests that ecrecover a **real** recorded NEAR AI signature, own-prompt tests (`real_mochi_reply_cannot_be_charged_to_moss` replays Mochi's real reply-5 against Moss and expects a rejection), arena tests (`real_arena_round_moss_wins` settles the real reply-5 against reply-6), and Chain Signatures tests. The JS tests re-verify the real recorded NEAR AI evidence offline and check the real MPC signature in `examples/tip/tip-testnet.json` (`test/tip.test.mjs`).
+1. Run `pnpm test`. You should see `126 passed` for Rust and `pass 34` for JS. The Rust tests include `charge_verified` tests that ecrecover a **real** recorded NEAR AI signature, own-prompt tests (`real_mochi_reply_cannot_be_charged_to_moss` replays Mochi's real reply-5 against Moss and expects a rejection), arena tests (`real_arena_round_moss_wins` settles the real reply-5 against reply-6), and Chain Signatures tests. The JS tests re-verify the real recorded NEAR AI evidence offline and check the real MPC signature in `examples/tip/tip-testnet.json` (`test/tip.test.mjs`).
 2. Run `pnpm verify examples/recorded/reply-1.json`. You should see 8 ✓ checks (hashes, request shape, Intel TDX quotes via dcap-qvl, NVIDIA NRAS GPU verdict, preflight-before-completion, provider_tee signature, Petri receipt) and `=> VALID` (exit 0). `pnpm verify examples/recorded/reply-[0-9].json` checks all six (exit 0).
 3. Run `pnpm verify examples/recorded/reply-1.tampered.json` (same reply with the text swapped for a scam message). You should see `✗ response bytes hash to response_hash`, `✗ provider_tee signature … signature text does not match`, and `=> INVALID` (exit 1).
 4. Run `pnpm demo:testnet`. It reads pet #0 "Mochi" from `petri-1793597952.testnet` over RPC: balance ≈ 0.483 NEAR, `replies 3`. For each recorded reply it should show `on-chain get_reply: index N, cost 0.0011.. NEAR` with ✓ on-chain receipt matches record and ✓ TEE evidence verifies. The last line is `=> ALL RECORDED REPLIES CHARGED ON-CHAIN AND TEE-VERIFIED`.
@@ -92,7 +92,7 @@ So a leaked chat-backend key can, at worst, submit this pet's genuine TEE-signed
 | `charge` reply-3 (`4225e9dc…062e`, 0.00113 NEAR) by backend | [`CUiNfCbHcQzw6bqc2tdpWbRcvo9R7QSTw6rZ9CGk5S3s`](https://testnet.nearblocks.io/txns/CUiNfCbHcQzw6bqc2tdpWbRcvo9R7QSTw6rZ9CGk5S3s) |
 | Negative check: `charge` signed by the owner, not the backend → `Smart contract panicked: only the backend can charge` | [`Hx5HrdQNmJqsfSprND75AvsFr1rNNd9bzSQWNgXi9f94`](https://testnet.nearblocks.io/txns/Hx5HrdQNmJqsfSprND75AvsFr1rNNd9bzSQWNgXi9f94) (failed, as intended) |
 
-This v1 deployment's code hash is `6SPGEDfJM1SG8F3iZTVrurshQCNBuFbX8R9xrpAsswTR` (sha256 `50cb2090…7e64`, built from commit `00f75e8`). The current main contract `v2.petri-1793597952.testnet` runs `EyeBLJwDhX4fMbJkrUvjUZ2wxSSG7WvQ4BQJyBjyuch`. You get that exact wasm from this commit with `pnpm build:contract:deploy` (Rust 1.86, `-C target-cpu=mvp`), so you can compare it against `view_account.code_hash`.
+This v1 deployment's code hash is `6SPGEDfJM1SG8F3iZTVrurshQCNBuFbX8R9xrpAsswTR` (sha256 `50cb2090…7e64`, built from commit `00f75e8`). The current main contract `v2.petri-1793597952.testnet` runs `9MiRFRk5Qif8oPyQgRDEXFzMTDgpnDGAK3CtShS2GWk`. You get that exact wasm from this commit with `pnpm build:contract:deploy` (Rust 1.86, `-C target-cpu=mvp`), so you can compare it against `view_account.code_hash`.
 
 ## Verified TEE brain (`lib/attest.mjs`, `lib/ai.mjs`, `lib/verify.mjs`)
 With `MOCK_AI=0`, `chat()` follows `docs/nearai/*.md` step by step. Model: `deepseek-ai/DeepSeek-V4.1-Flash-1017`, the canonical ID. The `deepseek/deepseek-v4.1-flash` alias returns no NEAR model attestation.
@@ -128,6 +128,34 @@ Real NEAR AI usage: **3 completions, 210 input + 217 output tokens = $0.000323**
 - NEAR JSON-RPC `query/call_function` view calls (`scripts/demo-testnet.mjs`); `near-cli-rs` for deploy and calls.
 - Per-pet sub-accounts with a function-call-only key (`mint_pet_with_account`), **Chain Signatures** (`v1.signer-prod.testnet`, `request_foreign_signature`), **NEAR Intents 1Click** quotes (`lib/oneclick.mjs`, `dry:true`), NEP-297 events.
 
+## Memecoin pots (NEAR Hackathon "Memecoins With Mechanics", with Shitzu)
+Fans tip pets in a real memecoin, and back a pet before an arena round; the winner's backers split the pot. The token is Shitzu's **real testnet SHITZU** NEP-141 `shitzu-0.factory.v10.meme-cooking.testnet` (18 decimals, launched via meme.cooking, liquid on Ref Finance testnet pool 2190). No stand-in token was needed.
+- Tip: `ft_transfer_call(receiver_id=v2.petri…, msg={"action":"tip","token_id":"1"})` → the pet's SHITZU jar. The current NFT owner withdraws it with `meme_claim_jar`.
+- Book: `meme_open_book(pet_a, pet_b, window_secs)` (payable, caller pays its storage; one open book per pair). Back a side with msg `{"action":"back","book_id":"0","token_id":"1"}` until `closes_at`; later stakes are refunded.
+- Settle: `arena_settle` settles the pair's open book automatically, **only if both arena replies were recorded after the book closed** (anti-front-running). Rake (`rake_bps` ≤ 10%, here 5%) of the losing side goes to the winning pet's jar; each winning backer gets `stake × pot / winning_side` (exact `mul_div`). One side empty → everyone refunded. No round within `void_after` → anyone can `meme_void_book`, and backers `meme_claim` refunds. Failed `ft_transfer` payouts are restored by the `meme_on_payout` callback.
+- Rules are set once by `meme_init` and are immutable. NEP-297 `meme_*` events. Views: `meme_get_config/book/book_count/open_book/stake/claimable/jar`. 26 unit tests, including settling on the real reply-5 vs reply-6.
+
+| Round 5 on `v2.petri-1793597952.testnet` (memecoin pots) | tx |
+| - | - |
+| Deploy round 5 (code hash `9MiRFRk5Qif8oPyQgRDEXFzMTDgpnDGAK3CtShS2GWk`, no init/migrate: meme state lives under new raw `mm:` keys; Mochi, Moss and Moss's arena win kept) | [`3u2RV3rKKZ75vXRzNykqX8wWekWDHqjxrgU4TzgCDqDc`](https://testnet.nearblocks.io/txns/3u2RV3rKKZ75vXRzNykqX8wWekWDHqjxrgU4TzgCDqDc) |
+| `meme_init` (token SHITZU, rake 500 bps, window 60–86400 s, void after 600 s; one-shot, immutable) | [`4rj8ARszgoPswJB5VK14PgUHoJAtaP1cUnwkLHmB2Gzw`](https://testnet.nearblocks.io/txns/4rj8ARszgoPswJB5VK14PgUHoJAtaP1cUnwkLHmB2Gzw) |
+| Contract registers storage on SHITZU | [`C2zTLcg56FUEHMEnQ4CHQevFBFrSDHWks5vJdhCf4UWH`](https://testnet.nearblocks.io/txns/C2zTLcg56FUEHMEnQ4CHQevFBFrSDHWks5vJdhCf4UWH) |
+| guest1 swaps 0.5 wNEAR → ≈3559 SHITZU on Ref pool 2190 | [`9DHmBWkCDRw5QniEA3rWzrg1E2SofRjrYPWVWGX2D7Vn`](https://testnet.nearblocks.io/txns/9DHmBWkCDRw5QniEA3rWzrg1E2SofRjrYPWVWGX2D7Vn) |
+| guest2 swaps 0.5 wNEAR → ≈3555 SHITZU | [`8HgkBMehDnkBvPUZ7Zk5SLbkyTFWamiNGQ8vTEpTGAWW`](https://testnet.nearblocks.io/txns/8HgkBMehDnkBvPUZ7Zk5SLbkyTFWamiNGQ8vTEpTGAWW) |
+| Tip 100 SHITZU to Moss #1 (`ft_transfer_call`, msg `tip`) | [`3WFsXQK2RKuHNKUf6o7yUsJS9K6NxWNfDY9XG5Dd2EuJ`](https://testnet.nearblocks.io/txns/3WFsXQK2RKuHNKUf6o7yUsJS9K6NxWNfDY9XG5Dd2EuJ) |
+| Tip 42 SHITZU to Mochi #0 | [`8QG9jYPLYcF1hkcqCG2y8PBp7Mtzy3idyaKkxYLfjd6m`](https://testnet.nearblocks.io/txns/8QG9jYPLYcF1hkcqCG2y8PBp7Mtzy3idyaKkxYLfjd6m) |
+| `meme_open_book` #0 (Mochi vs Moss, 120 s window) | [`DMvnUhjXy6aLohsZWeEfZHXmQW2iKsGJpRnt8DK7DmUq`](https://testnet.nearblocks.io/txns/DMvnUhjXy6aLohsZWeEfZHXmQW2iKsGJpRnt8DK7DmUq) |
+| guest1 backs Moss with 500 SHITZU | [`3DKThY5bP23mFd76dnt3BpZqXsMhtz6rPJVpaeyjWu6F`](https://testnet.nearblocks.io/txns/3DKThY5bP23mFd76dnt3BpZqXsMhtz6rPJVpaeyjWu6F) |
+| guest2 backs Mochi with 300 SHITZU | [`FzErHfGxV5Txfq7pheknR3j5vjFHE2H6ze47udHTXapf`](https://testnet.nearblocks.io/txns/FzErHfGxV5Txfq7pheknR3j5vjFHE2H6ze47udHTXapf) |
+| Late stake after close → refunded by `ft_resolve_transfer` (guest1 balance unchanged) | [`BwgkfodkzurvK8u2dcQSbDYmMwKsrHxi7cKRCL7GKNUt`](https://testnet.nearblocks.io/txns/BwgkfodkzurvK8u2dcQSbDYmMwKsrHxi7cKRCL7GKNUt) |
+| Owner claims Moss's jar (100) / Mochi's jar (42) | [`8WJDjffVcTTwre7j7HWCsxcxPea9FfL8iuzmb4daMDWx`](https://testnet.nearblocks.io/txns/8WJDjffVcTTwre7j7HWCsxcxPea9FfL8iuzmb4daMDWx) |
+| (second jar claim) | [`5eADyDAfgSiHzjSdLBoYgVVW2ZM3Fzgf29K4VrmR8SAN`](https://testnet.nearblocks.io/txns/5eADyDAfgSiHzjSdLBoYgVVW2ZM3Fzgf29K4VrmR8SAN) |
+| `meme_void_book` #0 after close + 600 s (no arena round for these pets; an early call panicked `too early to void`) | [`3hHck4vT5G1zcTCQC5pf2uUWfoxfNqxHd8caWMHAFCz8`](https://testnet.nearblocks.io/txns/3hHck4vT5G1zcTCQC5pf2uUWfoxfNqxHd8caWMHAFCz8) |
+| guest1 `meme_claim` → 500 refunded | [`HHa188pYzpmnqnnAtt5dgArPXjpAkn3jY9BUcskjmoDq`](https://testnet.nearblocks.io/txns/HHa188pYzpmnqnnAtt5dgArPXjpAkn3jY9BUcskjmoDq) |
+| guest2 `meme_claim` → 300 refunded | [`TjHRvSEtKZubHAfd8aenVK5P136YYGhHa7wWT73djMu`](https://testnet.nearblocks.io/txns/TjHRvSEtKZubHAfd8aenVK5P136YYGhHa7wWT73djMu) |
+
+Final state: book #0 `Void`, guest1 3459.02 SHITZU (3559 − 100 tip), guest2 3513.55 (3555.55 − 42 tip), owner 142 (both jars), contract 0. `pnpm demo:v2` checks the round-5 code hash and reads the memecoin config and book.
+
 ## Run
 ```
 # needs Rust 1.86 (rust-toolchain) + wasm32-unknown-unknown, Node 20+, pnpm
@@ -156,6 +184,7 @@ pnpm tip:prepare 1           # free: MPC address + 1Click dry quote; --sign = te
 - Transfers: there is no escrow or sale lock, and no per-reply cost cap (see the threat model). A pre-signed Chain Signatures sweep survives a sale. Re-keying costs the buyer 0.1 NEAR, and the old pet account's NEAR stays locked.
 - History view: nearblocks' testnet API returned no txs for this contract, so the live history is built from the txs listed in this README via archival RPC (`PETRI_HISTORY_TXS=hash:sender,...` adds more). A transfer with no listed tx shows up as "transfer tx not in the indexed history" (the live owner is still shown).
 - Owner page: there is no wallet-selector integration yet. The visitor pastes a NEP-413 `signMessage` result (or uses `scripts/sign-owner.mjs` for a local testnet key). The check runs in `web/server.mjs` and isn't a persistent session.
+- Memecoin pots: there is no web page for them yet (CLI/`near` calls only). Payouts are pro-rata, which gives no Sybil resistance, and nothing caps a whale. The contract pays the storage for stakes and jars (books are paid by their opener). Settling book #0 live would need two fresh, paid TEE arena replies, so the live demo shows the void/refund path, and the settle path is covered by unit tests on the real recorded replies.
 - Episodes are still planned (see `SPEC.md`).
 
 ## How control passes on transfer

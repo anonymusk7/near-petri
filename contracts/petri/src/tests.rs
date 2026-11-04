@@ -800,3 +800,165 @@ fn rekey_ok(p: &mut Petri, who: &str) -> AccountId {
     give(&mut m2, "alice", "bob");
     assert!(!m2.get_pet("0".into()).unwrap().pet_key_active);
 }
+
+// ---------- memecoins: tip jars and arena pots (meme.rs) ----------
+use crate::meme::{mul_div, payout, BookState};
+const SEC: u64 = 1_000_000_000;
+const SHZ: &str = "shitzu";
+fn meme_on(p: &mut Petri) { ctx("owner", 0, 0); p.meme_init(acc(SHZ), 500, 60, 86_400, 600); }
+fn ft(p: &mut Petri, t: u64, from: &str, amt: u128, msg: &str) {
+    ctx(SHZ, t, 0);
+    match p.ft_on_transfer(acc(from), U128(amt), msg.into()) { PromiseOrValue::Value(v) => assert_eq!(v.0, 0), _ => panic!() }
+}
+fn back(id: u64, pet: &str) -> String { format!("{{\"action\":\"back\",\"book_id\":\"{id}\",\"token_id\":\"{pet}\"}}") }
+/// real arena pets, memecoin on, book 0 opened at t=0 closing at 60s (replies are charged at HOUR).
+fn meme_arena() -> Petri {
+    let mut p = c(); meme_on(&mut p);
+    ctx("owner", 0, 0); p.add_tee_signer(R_MODEL.into(), R_SIGNER.into());
+    ctx("alice", 0, N); p.mint_pet("Mochi".into(), R_PROMPT_HASH.into());
+    ctx("alice", 0, N); p.mint_pet("Moss".into(), sha(MOSS_PROMPT));
+    ctx("dave", 0, N / 100); p.meme_open_book("0".into(), "1".into(), 60);
+    p
+}
+fn charge_and_settle(p: &mut Petri) -> ArenaRound {
+    for (id, n, prompt) in [("0", 5u8, R_PROMPT), ("1", 6, MOSS_PROMPT)] {
+        let (rq, rs, sg) = raw(n); ctx("backend", HOUR, 0);
+        p.charge_verified(id.into(), NearToken::from_yoctonear(MILLI), prompt.into(), rq, sha(&rs), sg);
+    }
+    let e = [("0", 5u8), ("1", 6)].map(|(id, n)| { let (rq, rs, _) = raw(n); ArenaEntryInput { token_id: id.into(), request: rq, response: rs } });
+    ctx("carol", 2 * HOUR, N / 10);
+    p.arena_settle("puddle".into(), e.into())
+}
+
+#[test] fn meme_config_is_set_once_and_readable() {
+    let mut p = c(); assert_eq!(p.meme_get_config(), None); meme_on(&mut p);
+    let cfg = p.meme_get_config().unwrap();
+    assert_eq!((cfg.token, cfg.rake_bps, cfg.void_after_secs), (acc(SHZ), 500, 600));
+}
+#[test] #[should_panic(expected = "rules are immutable")] fn meme_init_twice_rejected() { let mut p = c(); meme_on(&mut p); meme_on(&mut p); }
+#[test] #[should_panic(expected = "only the owner")] fn meme_init_owner_only() { let mut p = c(); ctx("eve", 0, 0); p.meme_init(acc(SHZ), 0, 60, 600, 600); }
+#[test] #[should_panic(expected = "rake_bps must be")] fn meme_rake_capped() { let mut p = c(); ctx("owner", 0, 0); p.meme_init(acc(SHZ), 1001, 60, 600, 600); }
+#[test] #[should_panic(expected = "only accepts its configured memecoin")] fn meme_wrong_token_rejected() {
+    let mut p = with_pet(); meme_on(&mut p); ctx("fake", 0, 0); p.ft_on_transfer(acc("bob"), U128(5), "{\"action\":\"tip\",\"token_id\":\"0\"}".into());
+}
+#[test] #[should_panic(expected = "not initialised")] fn meme_off_until_init() {
+    let mut p = with_pet(); ctx(SHZ, 0, 0); p.ft_on_transfer(acc("bob"), U128(5), "{\"action\":\"tip\",\"token_id\":\"0\"}".into());
+}
+#[test] fn meme_tip_fills_jar_and_owner_claims() {
+    let mut p = with_pet(); meme_on(&mut p);
+    ft(&mut p, 1, "bob", 7, "{\"action\":\"tip\",\"token_id\":\"0\"}");
+    ft(&mut p, 2, "carol", 3, "{\"action\":\"tip\",\"token_id\":\"0\"}");
+    assert_eq!(p.meme_get_jar("0".into()).0, 10);
+    assert!(get_logs().iter().any(|l| l.contains("meme_tip")));
+    ctx("alice", 3, 0); let _ = p.meme_claim_jar("0".into());
+    assert_eq!(p.meme_get_jar("0".into()).0, 0);
+}
+#[test] #[should_panic(expected = "only the pet owner")] fn meme_jar_only_owner() {
+    let mut p = with_pet(); meme_on(&mut p); ft(&mut p, 1, "bob", 7, "{\"action\":\"tip\",\"token_id\":\"0\"}");
+    ctx("bob", 3, 0); let _ = p.meme_claim_jar("0".into());
+}
+#[test] fn meme_jar_follows_the_nft() {
+    let mut p = with_pet(); meme_on(&mut p); ft(&mut p, 1, "bob", 7, "{\"action\":\"tip\",\"token_id\":\"0\"}");
+    give(&mut p, "alice", "bob"); ctx("bob", 3, 0); let _ = p.meme_claim_jar("0".into());
+}
+#[test] fn meme_failed_payout_restores_jar() {
+    let mut p = with_pet(); meme_on(&mut p);
+    cb(5, vec![PromiseResult::Failed]);
+    assert!(!p.meme_on_payout("j:0".into(), U128(9), None));
+    assert_eq!(p.meme_get_jar("0".into()).0, 9);
+}
+#[test] #[should_panic(expected = "no such pet")] fn meme_tip_unknown_pet() { let mut p = with_pet(); meme_on(&mut p); ft(&mut p, 1, "bob", 1, "{\"action\":\"tip\",\"token_id\":\"9\"}"); }
+#[test] #[should_panic(expected = "unknown action")] fn meme_bad_action() { let mut p = with_pet(); meme_on(&mut p); ft(&mut p, 1, "bob", 1, "{\"action\":\"rug\",\"token_id\":\"0\"}"); }
+
+#[test] fn meme_pot_winner_backers_split() {
+    let mut p = meme_arena();
+    ft(&mut p, SEC, "bob", 100, &back(0, "1"));   // Moss
+    ft(&mut p, SEC, "erin", 300, &back(0, "1"));  // Moss
+    ft(&mut p, SEC, "frank", 400, &back(0, "0")); // Mochi
+    let b = p.meme_get_book(U64(0)).unwrap();
+    assert_eq!((b.totals[0].0, b.totals[1].0, b.backers), (400, 400, 3));
+    let r = charge_and_settle(&mut p);
+    assert_eq!(r.winner, "1");
+    let b = p.meme_get_book(U64(0)).unwrap();
+    assert_eq!((b.state, b.winner.as_deref(), b.rake.0), (BookState::Settled, Some("1"), 20));
+    assert_eq!(p.meme_get_jar("1".into()).0, 20); // 5% of the losing side to the winner's jar
+    assert_eq!(p.meme_get_claimable(U64(0), acc("bob")).0, 195);  // 100/400 of 780
+    assert_eq!(p.meme_get_claimable(U64(0), acc("erin")).0, 585);
+    assert_eq!(p.meme_get_claimable(U64(0), acc("frank")).0, 0);
+    ctx("bob", 3 * HOUR, 0); let _ = p.meme_claim(U64(0));
+    assert_eq!(p.meme_get_stake(U64(0), acc("bob")), [U128(0), U128(0)]);
+}
+#[test] #[should_panic(expected = "nothing to claim")] fn meme_no_double_claim() {
+    let mut p = meme_arena(); ft(&mut p, SEC, "bob", 100, &back(0, "1")); ft(&mut p, SEC, "frank", 50, &back(0, "0"));
+    charge_and_settle(&mut p);
+    ctx("bob", 3 * HOUR, 0); let _ = p.meme_claim(U64(0)); let _ = p.meme_claim(U64(0));
+}
+#[test] fn meme_failed_claim_restores_stake() {
+    let mut p = meme_arena(); ft(&mut p, SEC, "bob", 100, &back(0, "1")); ft(&mut p, SEC, "frank", 50, &back(0, "0"));
+    charge_and_settle(&mut p);
+    ctx("bob", 3 * HOUR, 0); let _ = p.meme_claim(U64(0));
+    cb(3 * HOUR, vec![PromiseResult::Failed]);
+    p.meme_on_payout("s:0:bob.testnet".into(), U128(148), Some([U128(0), U128(100)]));
+    assert_eq!(p.meme_get_claimable(U64(0), acc("bob")).0, 148); // pot 150 minus rake 2 (5% of 50)
+}
+#[test] fn meme_one_sided_book_refunds() {
+    let mut p = meme_arena(); ft(&mut p, SEC, "frank", 400, &back(0, "0")); // only the loser was backed
+    charge_and_settle(&mut p);
+    assert_eq!(p.meme_get_claimable(U64(0), acc("frank")).0, 400);
+    assert_eq!(p.meme_get_jar("1".into()).0, 0);
+}
+#[test] #[should_panic(expected = "closed for staking")] fn meme_no_stake_after_close() {
+    let mut p = meme_arena(); ft(&mut p, 61 * SEC, "bob", 1, &back(0, "1"));
+}
+#[test] #[should_panic(expected = "pet is not in this book")] fn meme_back_outsider() {
+    let mut p = meme_arena(); ft(&mut p, SEC, "bob", 1, &back(0, "7"));
+}
+#[test] #[should_panic(expected = "already has an open book")] fn meme_one_open_book_per_pair() {
+    let mut p = meme_arena(); ctx("dave", 0, N / 100); p.meme_open_book("1".into(), "0".into(), 60);
+}
+#[test] #[should_panic(expected = "outside the fixed limits")] fn meme_window_limits() {
+    let mut p = meme_arena(); ctx("dave", 0, N / 100); p.meme_open_book("0".into(), "1".into(), 10);
+}
+#[test] fn meme_replies_charged_before_close_do_not_settle() {
+    // frontrunning guard: replies charged at HOUR, book closes after them -> arena counts, book stays open
+    let mut p = c(); meme_on(&mut p);
+    ctx("owner", 0, 0); p.add_tee_signer(R_MODEL.into(), R_SIGNER.into());
+    ctx("alice", 0, N); p.mint_pet("Mochi".into(), R_PROMPT_HASH.into());
+    ctx("alice", 0, N); p.mint_pet("Moss".into(), sha(MOSS_PROMPT));
+    ctx("dave", 0, N / 100); p.meme_open_book("0".into(), "1".into(), 86_400);
+    ft(&mut p, SEC, "bob", 100, &back(0, "1"));
+    let r = charge_and_settle(&mut p);
+    assert_eq!(r.winner, "1");
+    assert_eq!(p.meme_get_book(U64(0)).unwrap().state, BookState::Open);
+    assert!(get_logs().iter().any(|l| l.contains("charged before the book closed")));
+    // ... and after the void window anyone can void it, then bob gets his stake back
+    ctx("x", 86_400 * SEC + 600 * SEC, 0); p.meme_void_book(U64(0));
+    assert_eq!(p.meme_get_claimable(U64(0), acc("bob")).0, 100);
+    ctx("dave", 86_400 * SEC + 601 * SEC, N / 100); assert_eq!(p.meme_open_book("0".into(), "1".into(), 60).id, U64(1));
+}
+#[test] #[should_panic(expected = "too early to void")] fn meme_void_too_early() {
+    let mut p = meme_arena(); ctx("x", 600 * SEC, 0); p.meme_void_book(U64(0));
+}
+#[test] #[should_panic(expected = "not settled or void")] fn meme_claim_while_open() {
+    let mut p = meme_arena(); ft(&mut p, SEC, "bob", 1, &back(0, "1")); ctx("bob", 2 * SEC, 0); let _ = p.meme_claim(U64(0));
+}
+#[test] fn meme_existing_arena_unchanged_without_meme() {
+    let mut p = real_arena(); // no meme_init: arena_settle works exactly as before
+    let e = [("0", 5u8), ("1", 6)].map(|(id, n)| { let (rq, rs, _) = raw(n); ArenaEntryInput { token_id: id.into(), request: rq, response: rs } });
+    ctx("carol", 2 * HOUR, N / 10);
+    assert_eq!(p.arena_settle("puddle".into(), e.into()).winner, "1");
+}
+#[test] fn meme_payout_rule_conserves_pot() {
+    let totals = [3_333u128 * N, 7_777 * N];
+    let mut paid = 0u128;
+    for mine in [[0, 1_111 * N], [0, 6_666 * N]] { paid += payout(&BookState::Settled, Some(1), totals, mine, 500).0; }
+    let (_, rake) = payout(&BookState::Settled, Some(1), totals, [0, 0], 500);
+    let total = totals[0] + totals[1];
+    assert!(paid + rake <= total && total - paid - rake < 3, "dust only");
+    assert_eq!(payout(&BookState::Void, Some(1), totals, [5, 6], 500).0, 11);
+}
+#[test] fn meme_mul_div_exact_on_big_numbers() {
+    let (a, b, d) = (6_666u128 * N, 10_000u128 * N, 7_777u128 * N);
+    assert_eq!(mul_div(a, b, d), 8_571_428_571_428_571_428_571_428_571u128); // 6666e24*10000e24/7777e24
+    assert_eq!(mul_div(3, 7, 4), 5);
+}

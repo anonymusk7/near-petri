@@ -69,14 +69,15 @@ const onlyCharge = keys.length === 1 && fc[0].FunctionCall && fc[0].FunctionCall
 console.log(`pet #1 ${p1.name}: own account ${p1.pet_account} (${(Number(BigInt(acct.amount) / 10n ** 18n) / 1e6).toFixed(6)} NEAR for its own gas), replies ${p1.replies}`);
 console.log(`  keys: ${keys.length}, ${JSON.stringify(fc[0])} ${onlyCharge ? '✓ only charge_verified on ' + CONTRACT + ', no full-access key' : '✗'}`);
 ok &&= onlyCharge && p1.replies >= 1;
-// Round 4 upgrade (deploy + migrate, same address): the live code is the reproducible
-// `pnpm build:contract:deploy` wasm with the transfer fix, and the pets survived the migration.
-const ROUND4_CODE_HASH = 'EyeBLJwDhX4fMbJkrUvjUZ2wxSSG7WvQ4BQJyBjyuch';
+// Round 4 upgrade (deploy + migrate, same address) kept the pets; round 5 (memecoin pots,
+// plain deploy: new state lives under raw prefixes, no migration) kept them again.
+// The live code is the reproducible `pnpm build:contract:deploy` wasm of this commit.
+const ROUND4_CODE_HASH = '9MiRFRk5Qif8oPyQgRDEXFzMTDgpnDGAK3CtShS2GWk';
 const live = await rpc({ request_type: 'view_account', finality: 'final', account_id: CONTRACT });
 const r4 = live.code_hash === ROUND4_CODE_HASH && pets[0].name === 'Mochi' && pets[1].name === 'Moss'
   && typeof pets[1].pet_key_active === 'boolean' && pets[1].pet_key_active === true;
 ok &&= r4;
-console.log(`round 4 code ${live.code_hash} ${live.code_hash === ROUND4_CODE_HASH ? '✓ = pnpm build:contract:deploy' : '✗ expected ' + ROUND4_CODE_HASH}; Mochi #0 + Moss #1 kept; Moss pet_key_active=${pets[1].pet_key_active} ${r4 ? '✓ (key frozen on sale, rekey_pet)' : '✗'}`);
+console.log(`round 5 code ${live.code_hash} ${live.code_hash === ROUND4_CODE_HASH ? '✓ = pnpm build:contract:deploy' : '✗ expected ' + ROUND4_CODE_HASH}; Mochi #0 + Moss #1 kept; Moss pet_key_active=${pets[1].pet_key_active} ${r4 ? '✓ (key frozen on sale, rekey_pet)' : '✗'}`);
 // Tip from any chain: pet #1's EVM address comes from NEAR Chain Signatures; the recorded MPC signature must recover to it.
 const { petEvmAddress, signedSweep, loadNetwork } = await import('../lib/tip.mjs');
 const { ethers } = await import('ethers');
@@ -85,5 +86,12 @@ const cs = await petEvmAddress({ ...loadNetwork('testnet'), petri: CONTRACT }, '
 const st = signedSweep(ethers.Transaction.from(art.signed.unsigned), art.signed.mpc_signature, cs.address);
 ok &&= cs.address === art.evm_address;
 console.log(`pet #1 EVM address via Chain Signatures: ${cs.address} ${cs.address === art.evm_address ? '✓' : '✗'}; MPC-signed sweep (NEAR tx ${art.signed.near_tx.slice(0, 8)}…) recovers to ${st.from} ✓`);
-console.log(ok ? '=> EVERY CHARGED REPLY IS TEE-VERIFIED ON-CHAIN, THE ARENA RESULT REPRODUCES, THE PET SIGNS ON OTHER CHAINS, ROUND-4 CODE IS LIVE' : '=> MISMATCH');
+// Memecoin pots: rules fixed once, real testnet SHITZU, book #0 and the tip jars are on-chain.
+const MEME_TOKEN = 'shitzu-0.factory.v10.meme-cooking.testnet';
+const mcfg = await view('meme_get_config', {});
+const book0 = await view('meme_get_book', { book_id: '0' });
+const memeOk = mcfg && mcfg.token === MEME_TOKEN && mcfg.rake_bps === 500 && book0 && book0.backers === 2;
+ok &&= !!memeOk;
+console.log(`memecoin pots: token ${mcfg?.token} (real testnet SHITZU), rake ${mcfg?.rake_bps} bps, void after ${mcfg?.void_after_secs}s, immutable ${memeOk ? '✓' : '✗'}; book #0 pets ${book0?.pets} state ${book0?.state}, staked ${book0?.totals.map((t) => Number(BigInt(t) / 10n ** 18n))} SHITZU by ${book0?.backers} backers`);
+console.log(ok ? '=> EVERY CHARGED REPLY IS TEE-VERIFIED ON-CHAIN, THE ARENA RESULT REPRODUCES, THE PET SIGNS ON OTHER CHAINS, ROUND-5 CODE IS LIVE' : '=> MISMATCH');
 process.exit(ok ? 0 : 1);

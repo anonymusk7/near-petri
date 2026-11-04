@@ -548,6 +548,7 @@ impl Petri {
         let before = env::storage_usage();
         let mut question: Option<String> = None;
         let mut out = Vec::new();
+        let mut first_ns = u64::MAX;
         for e in &entries {
             let req: near_sdk::serde_json::Value = near_sdk::serde_json::from_str(&e.request)
                 .unwrap_or_else(|_| env::panic_str("request is not JSON"));
@@ -565,6 +566,7 @@ impl Petri {
             let q = user_question(&req).unwrap_or_else(|| env::panic_str("request has no user question"));
             match &question { None => question = Some(q), Some(q0) => require!(*q0 == q, "both pets must answer the same question") }
             let text = reply_text(&resp).unwrap_or_else(|| env::panic_str("response has no reply text"));
+            first_ns = first_ns.min(rec.at_ns.0);
             out.push(ArenaEntry { token_id: e.token_id.clone(), reply_hash, has_word: text.to_lowercase().contains(&word),
                                   chars: text.trim().chars().count() as u32 });
         }
@@ -581,6 +583,7 @@ impl Petri {
                                  at_ns: U64(env::block_timestamp()) };
         self.arena_rounds.insert(id, round.clone());
         self.arena_rounds.flush(); self.arena_used.flush(); self.arena_wins.flush();
+        self.meme_settle_for([&entries[0].token_id, &entries[1].token_id], first_ns, &winner, id);
         let cost = env::storage_byte_cost().as_yoctonear() * env::storage_usage().saturating_sub(before) as u128;
         let dep = env::attached_deposit().as_yoctonear();
         require!(dep >= cost, format!("attach at least {cost} yocto for arena storage"));
@@ -813,6 +816,8 @@ fn default_mpc() -> AccountId {
     let testnet = env::current_account_id().as_str().ends_with(".testnet");
     (if testnet { "v1.signer-prod.testnet" } else { "v1.signer" }).parse().unwrap()
 }
+
+pub mod meme;
 
 #[cfg(test)]
 mod tests;
