@@ -821,6 +821,8 @@ pub mod meme;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_attack;
 
 /// Lowercase hex encoding.
 pub fn hex(b: &[u8]) -> String {
@@ -830,7 +832,7 @@ pub fn hex(b: &[u8]) -> String {
 
 fn unhex(s: &str) -> Option<Vec<u8>> {
     let s = s.strip_prefix("0x").unwrap_or(s);
-    if s.len() % 2 != 0 { return None; }
+    if !s.is_ascii() || s.len() % 2 != 0 { return None; }
     (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).ok()).collect()
 }
 

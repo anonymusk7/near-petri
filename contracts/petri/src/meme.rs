@@ -86,7 +86,7 @@ pub fn payout(state: &BookState, winner_idx: Option<usize>, totals: [u128; 2], m
         (BookState::Settled, Some(w)) => {
             let (win, lose) = (totals[w], totals[1 - w]);
             if win == 0 || lose == 0 { return refund; }
-            let rake = lose * rake_bps as u128 / 10_000;
+            let rake = mul_div(rake_bps as u128, lose, 10_000);
             let pot = win + lose - rake;
             // mine[w] * pot / win without overflow for realistic 18-decimal supplies
             let share = mul_div(mine[w], pot, win);
@@ -103,11 +103,12 @@ pub fn mul_div(a: u128, b: u128, d: u128) -> u128 {
     let (mut q, mut r) = (0u128, 0u128);
     for i in (0..128).rev() {
         // (q, r) = 2 * (q, r) + bit_i(b) * (a / d, a % d) ; with a <= d, a / d is 0 or 1
-        q = q * 2; r = r * 2;
-        if r >= d { q += 1; r -= d; }
+        // r < d throughout, so compare against d - r instead of forming 2r or r + m (no overflow for d > 2^127)
+        if r >= d - r { q = 2 * q + 1; r -= d - r; } else { q *= 2; r += r; }
         if (b >> i) & 1 == 1 {
-            q += a / d; r += a % d;
-            if r >= d { q += 1; r -= d; }
+            let m = a % d;
+            q += a / d;
+            if r >= d - m { q += 1; r -= d - m; } else { r += m; }
         }
     }
     q
@@ -211,7 +212,8 @@ impl Petri {
     }
 
     /// Backer: take your payout (settled) or refund (void / one-sided book).
-    pub fn meme_claim(&mut self, book_id: U64) -> Promise {
+    /// A backer of the losing side (payout 0) just has their stake entry cleared: Value(false).
+    pub fn meme_claim(&mut self, book_id: U64) -> PromiseOrValue<bool> {
         let c = cfg();
         let b = books().get(&book_id.0).cloned().unwrap_or_else(|| env::panic_str("no such book"));
         require!(b.state != BookState::Open, "book is not settled or void yet");
@@ -222,7 +224,11 @@ impl Petri {
         let w = b.winner.as_ref().and_then(|w| b.pets.iter().position(|p| p == w));
         let (amt, _) = payout(&b.state, w, [b.totals[0].0, b.totals[1].0], mine, c.rake_bps);
         st.remove(&k); st.flush();
-        self.ft_out(c.token, who, amt, format!("s:{}", k), Some([U128(mine[0]), U128(mine[1])]))
+        if amt == 0 {
+            env::log_str("stake cleared: nothing to pay");
+            return PromiseOrValue::Value(false);
+        }
+        PromiseOrValue::Promise(self.ft_out(c.token, who, amt, format!("s:{}", k), Some([U128(mine[0]), U128(mine[1])])))
     }
 
     /// Current NFT owner of a pet: withdraw the pet's tip jar.

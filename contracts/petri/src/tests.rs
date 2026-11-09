@@ -2,13 +2,13 @@ use super::*;
 use near_sdk::test_utils::{get_logs, VMContextBuilder};
 use near_sdk::testing_env;
 
-const N: u128 = ONE_NEAR;
-const H: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-const H2: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
-const HOUR: u64 = 3_600_000_000_000;
+pub(crate) const N: u128 = ONE_NEAR;
+pub(crate) const H: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+pub(crate) const H2: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+pub(crate) const HOUR: u64 = 3_600_000_000_000;
 
-fn acc(s: &str) -> AccountId { format!("{s}.testnet").parse().unwrap() }
-fn ctx(who: &str, t: u64, dep: u128) {
+pub(crate) fn acc(s: &str) -> AccountId { format!("{s}.testnet").parse().unwrap() }
+pub(crate) fn ctx(who: &str, t: u64, dep: u128) {
     testing_env!(VMContextBuilder::new()
         .current_account_id(acc("petri"))
         .predecessor_account_id(acc(who))
@@ -16,10 +16,10 @@ fn ctx(who: &str, t: u64, dep: u128) {
         .attached_deposit(NearToken::from_yoctonear(dep))
         .build());
 }
-fn yocto(t: NearToken) -> u128 { t.as_yoctonear() }
-fn c() -> Petri { ctx("owner", 0, 0); Petri::new(acc("owner"), acc("backend")) }
+pub(crate) fn yocto(t: NearToken) -> u128 { t.as_yoctonear() }
+pub(crate) fn c() -> Petri { ctx("owner", 0, 0); Petri::new(acc("owner"), acc("backend")) }
 /// Contract with alice's pet "0" minted with 1 NEAR at t=0.
-fn with_pet() -> Petri { let mut p = c(); ctx("alice", 0, N); p.mint_pet("Mochi".into(), H.into()); p }
+pub(crate) fn with_pet() -> Petri { let mut p = c(); ctx("alice", 0, N); p.mint_pet("Mochi".into(), H.into()); p }
 
 #[test] fn mint_sets_balance_minus_storage() {
     let mut p = c();
@@ -297,16 +297,16 @@ fn with_pet() -> Petri { let mut p = c(); ctx("alice", 0, N); p.mint_pet("Mochi"
 
 // ---------- on-chain TEE verification, against a REAL recorded NEAR AI Cloud reply ----------
 // Values from examples/recorded/reply-1.json (DeepSeek-V4.1-Flash-1017, provider_tee ECDSA).
-const R_PROMPT: &str = "Cheerful moss creature who loves rain.";
-const R_PROMPT_HASH: &str = "d691db075710cfc9e33cbdebc2e3c60d64c77aed02aa383c9f0c9a3ee083871b";
-const R_MODEL: &str = "deepseek-ai/DeepSeek-V4.1-Flash-1017";
-const R_REQUEST: &str = r#"{"model":"deepseek-ai/DeepSeek-V4.1-Flash-1017","messages":[{"role":"system","content":"You are Mochi, a Petri pet living on NEAR. Cheerful moss creature who loves rain. Answer in at most two short sentences."},{"role":"user","content":"Hi Mochi! What did you do today?"}],"max_tokens":400,"stream":false}"#;
-const R_RESP_HASH: &str = "4a8a750dc550e2d2dd186bc474fb15e7d21f56f30ff0598b744ba696569c3342";
-const R_SIG: &str = "0x38a268f28dd1771a96708b8568f3275495ef1eb9e15c2a96984d10ccddb26f55482039de99771e0f44e7289a14082a59c7ad17b093ded91d999c0041561a14ee1c";
-const R_SIGNER: &str = "0xfe0071895500a9755c18044948ab4f4e1a7f337e";
-const MILLI: u128 = N / 1000;
+pub(crate) const R_PROMPT: &str = "Cheerful moss creature who loves rain.";
+pub(crate) const R_PROMPT_HASH: &str = "d691db075710cfc9e33cbdebc2e3c60d64c77aed02aa383c9f0c9a3ee083871b";
+pub(crate) const R_MODEL: &str = "deepseek-ai/DeepSeek-V4.1-Flash-1017";
+pub(crate) const R_REQUEST: &str = r#"{"model":"deepseek-ai/DeepSeek-V4.1-Flash-1017","messages":[{"role":"system","content":"You are Mochi, a Petri pet living on NEAR. Cheerful moss creature who loves rain. Answer in at most two short sentences."},{"role":"user","content":"Hi Mochi! What did you do today?"}],"max_tokens":400,"stream":false}"#;
+pub(crate) const R_RESP_HASH: &str = "4a8a750dc550e2d2dd186bc474fb15e7d21f56f30ff0598b744ba696569c3342";
+pub(crate) const R_SIG: &str = "0x38a268f28dd1771a96708b8568f3275495ef1eb9e15c2a96984d10ccddb26f55482039de99771e0f44e7289a14082a59c7ad17b093ded91d999c0041561a14ee1c";
+pub(crate) const R_SIGNER: &str = "0xfe0071895500a9755c18044948ab4f4e1a7f337e";
+pub(crate) const MILLI: u128 = N / 1000;
 
-fn tee_pet() -> Petri {
+pub(crate) fn tee_pet() -> Petri {
     let mut p = c();
     ctx("owner", 0, 0);
     p.add_tee_signer(R_MODEL.into(), "0xFE0071895500A9755C18044948AB4f4e1A7f337e".into());
@@ -314,7 +314,7 @@ fn tee_pet() -> Petri {
     p.mint_pet("Mochi".into(), R_PROMPT_HASH.into());
     p
 }
-fn cv(p: &mut Petri, prompt: &str, req: &str, resp: &str, sig: &str) -> ReplyRecord {
+pub(crate) fn cv(p: &mut Petri, prompt: &str, req: &str, resp: &str, sig: &str) -> ReplyRecord {
     ctx("backend", HOUR, 0);
     p.charge_verified("0".into(), NearToken::from_yoctonear(MILLI), prompt.into(), req.into(), resp.into(), sig.into())
 }
@@ -371,8 +371,8 @@ fn cv(p: &mut Petri, prompt: &str, req: &str, resp: &str, sig: &str) -> ReplyRec
 }
 
 // ---------- pet = its own NEAR account with a charge_verified-only key ----------
-const PK: &str = "ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp";
-fn acct_pet() -> Petri {
+pub(crate) const PK: &str = "ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp";
+pub(crate) fn acct_pet() -> Petri {
     let mut p = c();
     ctx("owner", 0, 0);
     p.add_tee_signer(R_MODEL.into(), R_SIGNER.into());
@@ -380,7 +380,7 @@ fn acct_pet() -> Petri {
     p.mint_pet_with_account("Mochi".into(), R_PROMPT_HASH.into(), PK.parse().unwrap());
     p
 }
-fn cv_as(p: &mut Petri, who: &str) -> ReplyRecord {
+pub(crate) fn cv_as(p: &mut Petri, who: &str) -> ReplyRecord {
     testing_env!(VMContextBuilder::new().current_account_id(acc("petri")).predecessor_account_id(who.parse().unwrap())
         .block_timestamp(HOUR).build());
     p.charge_verified("0".into(), NearToken::from_yoctonear(MILLI), R_PROMPT.into(), R_REQUEST.into(), R_RESP_HASH.into(), R_SIG.into())
@@ -447,20 +447,20 @@ fn cv_as(p: &mut Petri, who: &str) -> ReplyRecord {
 }
 
 // ---------- arena ----------
-fn sha(s: &str) -> String { hex(&env::sha256(s.as_bytes())) }
-fn arena_req(name: &str, q: &str) -> String {
+pub(crate) fn sha(s: &str) -> String { hex(&env::sha256(s.as_bytes())) }
+pub(crate) fn arena_req(name: &str, q: &str) -> String {
     format!(r#"{{"model":"m","messages":[{{"role":"system","content":"You are {name}"}},{{"role":"user","content":"{q}"}}]}}"#)
 }
-fn arena_resp(text: &str) -> String { format!(r#"{{"choices":[{{"message":{{"role":"assistant","content":"{text}"}}}}]}}"#) }
+pub(crate) fn arena_resp(text: &str) -> String { format!(r#"{{"choices":[{{"message":{{"role":"assistant","content":"{text}"}}}}]}}"#) }
 /// Register a charged, TEE-proved reply directly (the real path is covered by charge_verified tests).
-fn proved(p: &mut Petri, token: &str, req: &str, resp: &str) {
+pub(crate) fn proved(p: &mut Petri, token: &str, req: &str, resp: &str) {
     let (rq, rs) = (sha(req), sha(resp));
     let rh = sha(&format!("m:{rq}:{rs}"));
     p.tee_proofs.insert(rh.clone(), TeeProof { model: "m".into(), request_hash: rq, response_hash: rs, signer: R_SIGNER.into(), signature: R_SIG.into() });
     p.replies.insert(rh, ReplyRecord { token_id: token.into(), index: 0, cost: NearToken::from_yoctonear(0), at_ns: U64(0) });
 }
-const Q: &str = "Arena: describe rain in one line using the word puddle.";
-fn arena() -> (Petri, Vec<ArenaEntryInput>) {
+pub(crate) const Q: &str = "Arena: describe rain in one line using the word puddle.";
+pub(crate) fn arena() -> (Petri, Vec<ArenaEntryInput>) {
     let mut p = with_pet();
     ctx("bob", 0, N); p.mint_pet("Moss".into(), H2.into());
     let a = (arena_req("Mochi", Q), arena_resp("Rain fills every puddle with tiny drums!"));
@@ -548,8 +548,8 @@ fn arena() -> (Petri, Vec<ArenaEntryInput>) {
 }
 
 // ---------- the REAL recorded arena round (examples/recorded/reply-5 Mochi, reply-6 Moss) ----------
-const MOSS_PROMPT: &str = "Sleepy moss creature who answers in calm, tiny whispers.";
-fn raw(n: u8) -> (String, String, String) {
+pub(crate) const MOSS_PROMPT: &str = "Sleepy moss creature who answers in calm, tiny whispers.";
+pub(crate) fn raw(n: u8) -> (String, String, String) {
     let (rq, rs, sg) = match n {
         5 => (include_str!("../../../examples/recorded/raw/reply-5.request.json"), include_str!("../../../examples/recorded/raw/reply-5.response.json"),
               include_str!("../../../examples/recorded/raw/reply-5.signature.json")),
@@ -563,7 +563,7 @@ fn raw(n: u8) -> (String, String, String) {
     let sig: near_sdk::serde_json::Value = near_sdk::serde_json::from_str(sg).unwrap();
     (rq.to_string(), rs.to_string(), sig["signature"].as_str().unwrap().to_string())
 }
-fn real_arena() -> Petri {
+pub(crate) fn real_arena() -> Petri {
     let mut p = c();
     ctx("owner", 0, 0);
     p.add_tee_signer(R_MODEL.into(), R_SIGNER.into());
@@ -596,15 +596,15 @@ fn real_arena() -> Petri {
 }
 
 // ---------- transfer: control passes to the new owner, the seller keeps nothing ----------
-const PK2: &str = "ed25519:4F9pq1KhzGHRVdaCeGdpkkLM7MmRbMfmVzdkWV8jiGgE";
-const PET0: &str = "pet-0.petri.testnet";
+pub(crate) const PK2: &str = "ed25519:4F9pq1KhzGHRVdaCeGdpkkLM7MmRbMfmVzdkWV8jiGgE";
+pub(crate) const PET0: &str = "pet-0.petri.testnet";
 /// Resolve a callback with the given promise results (predecessor = the contract itself).
-fn cb(t: u64, results: Vec<PromiseResult>) {
+pub(crate) fn cb(t: u64, results: Vec<PromiseResult>) {
     testing_env!(VMContextBuilder::new().current_account_id(acc("petri")).predecessor_account_id(acc("petri")).block_timestamp(t).build(),
         near_sdk::test_vm_config(), near_sdk::RuntimeFeesConfig::test(), Default::default(), results);
 }
-fn give(p: &mut Petri, from: &str, to: &str) { ctx(from, 1, 1); p.nft_transfer(acc(to), "0".into(), None, None); }
-fn rekey_ok(p: &mut Petri, who: &str) -> AccountId {
+pub(crate) fn give(p: &mut Petri, from: &str, to: &str) { ctx(from, 1, 1); p.nft_transfer(acc(to), "0".into(), None, None); }
+pub(crate) fn rekey_ok(p: &mut Petri, who: &str) -> AccountId {
     ctx(who, 2, PET_ACCOUNT_FUND);
     let _ = p.rekey_pet("0".into(), PK2.parse().unwrap());
     let account: AccountId = "pet-0-1.petri.testnet".parse().unwrap();
@@ -807,16 +807,16 @@ fn rekey_ok(p: &mut Petri, who: &str) -> AccountId {
 
 // ---------- memecoins: tip jars and arena pots (meme.rs) ----------
 use crate::meme::{mul_div, payout, BookState};
-const SEC: u64 = 1_000_000_000;
-const SHZ: &str = "shitzu";
-fn meme_on(p: &mut Petri) { ctx("owner", 0, 0); p.meme_init(acc(SHZ), 500, 60, 86_400, 600); }
-fn ft(p: &mut Petri, t: u64, from: &str, amt: u128, msg: &str) {
+pub(crate) const SEC: u64 = 1_000_000_000;
+pub(crate) const SHZ: &str = "shitzu";
+pub(crate) fn meme_on(p: &mut Petri) { ctx("owner", 0, 0); p.meme_init(acc(SHZ), 500, 60, 86_400, 600); }
+pub(crate) fn ft(p: &mut Petri, t: u64, from: &str, amt: u128, msg: &str) {
     ctx(SHZ, t, 0);
     match p.ft_on_transfer(acc(from), U128(amt), msg.into()) { PromiseOrValue::Value(v) => assert_eq!(v.0, 0), _ => panic!() }
 }
-fn back(id: u64, pet: &str) -> String { format!("{{\"action\":\"back\",\"book_id\":\"{id}\",\"token_id\":\"{pet}\"}}") }
+pub(crate) fn back(id: u64, pet: &str) -> String { format!("{{\"action\":\"back\",\"book_id\":\"{id}\",\"token_id\":\"{pet}\"}}") }
 /// real arena pets, memecoin on, book 0 opened at t=0 closing at 60s (replies are charged at HOUR).
-fn meme_arena() -> Petri {
+pub(crate) fn meme_arena() -> Petri {
     let mut p = c(); meme_on(&mut p);
     ctx("owner", 0, 0); p.add_tee_signer(R_MODEL.into(), R_SIGNER.into());
     ctx("alice", 0, N); p.mint_pet("Mochi".into(), R_PROMPT_HASH.into());
@@ -824,7 +824,7 @@ fn meme_arena() -> Petri {
     ctx("dave", 0, N / 100); p.meme_open_book("0".into(), "1".into(), 60);
     p
 }
-fn charge_and_settle(p: &mut Petri) -> ArenaRound {
+pub(crate) fn charge_and_settle(p: &mut Petri) -> ArenaRound {
     for (id, n, prompt) in [("0", 5u8, R_PROMPT), ("1", 6, MOSS_PROMPT)] {
         let (rq, rs, sg) = raw(n); ctx("backend", HOUR, 0);
         p.charge_verified(id.into(), NearToken::from_yoctonear(MILLI), prompt.into(), rq, sha(&rs), sg);
