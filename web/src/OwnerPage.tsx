@@ -6,13 +6,31 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { api, near } from "@/lib/format"
+import { STATIC } from "@/lib/mode"
+import { OwnerActions } from "@/OwnerActions"
 
 type Challenge = { message: string; nonce: string; recipient: string; tokenId: string; contract: string }
 type PetView = { token_id: string; name: string; owner_id: string; balance: string; pet_account: string | null; pet_key_active?: boolean }
 type Result = { allowed: boolean; reason: string; pet?: PetView; pet_keys?: { public_key: string; permission: unknown }[] }
 
-/** Owner-only view, gated to the CURRENT holder of the pet NFT by a NEP-413 signed message. */
+/** Owner-only view. Hosted demo: gated on the connected wallet. Local app: NEP-413 signed message checked by the server. */
 export function OwnerPage({ tokenId }: { tokenId: string }) {
+  if (STATIC) {
+    return (
+      <div className="flex flex-col gap-4 p-4 text-sm">
+        <div className="flex items-center gap-2 font-medium"><LockIcon className="size-4" />Only the current holder of pet #{tokenId} gets owner actions.</div>
+        <OwnerActions tokenId={tokenId} gate />
+        <p className="text-xs text-muted-foreground">
+          The local app (<code>pnpm web</code>) also has a server-side owner check: you sign a NEP-413 message and the server verifies the signature,
+          that the key is a full-access key of your account, and that the account is the NFT owner. This hosted demo has no server, so it only compares your connected wallet with the on-chain owner.
+        </p>
+      </div>
+    )
+  }
+  return <ServerOwnerPage tokenId={tokenId} />
+}
+
+function ServerOwnerPage({ tokenId }: { tokenId: string }) {
   const [ch, setCh] = useState<Challenge | null>(null)
   const [signed, setSigned] = useState("")
   const [res, setRes] = useState<Result | null>(null)
@@ -58,6 +76,7 @@ export function OwnerPage({ tokenId }: { tokenId: string }) {
           </div>
         )}
         <Button variant="outline" size="sm" className="self-start" onClick={fresh}>Sign out</Button>
+        <OwnerActions tokenId={tokenId} gate={false} />
       </div>
     )
   }
@@ -84,6 +103,7 @@ export function OwnerPage({ tokenId }: { tokenId: string }) {
           <AlertDescription>{res.reason}. Request a new challenge to try again.</AlertDescription>
         </Alert>
       )}
+      <OwnerActions tokenId={tokenId} gate={false} />
     </div>
   )
 }

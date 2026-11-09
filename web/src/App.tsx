@@ -22,6 +22,10 @@ import { api, explorer, near, short, when } from "@/lib/format"
 import { PetHistory } from "@/PetHistory"
 import { OwnerPage } from "@/OwnerPage"
 import { MemePage } from "@/MemePage"
+import { PetActions } from "@/PetActions"
+import { useWalletBoot, WalletButton } from "@/Wallet"
+import { onTx } from "@/lib/wallet"
+import { REPO, STATIC } from "@/lib/mode"
 
 type Perm = { FunctionCall?: { allowance: string | null; receiver_id: string; method_names: string[] } } | string
 type Pet = {
@@ -60,7 +64,7 @@ function PetFace({ pet, className }: { pet: Pet; className?: string }) {
   )
 }
 
-function PetCard({ pet, selected, onSelect, contract }: { pet: Pet; selected: boolean; onSelect: () => void; contract: string }) {
+function PetCard({ pet, selected, onSelect, contract, threshold }: { pet: Pet; selected: boolean; onSelect: () => void; contract: string; threshold: string }) {
   const bal = BigInt(pet.sim_balance)
   const pct = Number((bal * 100n) / FULL)
   const fc = pet.keys?.[0]?.permission
@@ -125,6 +129,7 @@ function PetCard({ pet, selected, onSelect, contract }: { pet: Pet; selected: bo
             <span className="font-mono">{short(pet.tip.address, 6)}</span>
           </div>
         )}
+        <PetActions pet={pet} threshold={threshold} />
       </CardContent>
     </Card>
   )
@@ -142,7 +147,7 @@ function VerifiedReply({ r, petName }: { r: Verified; petName: string }) {
           </TooltipTrigger>
           <TooltipContent className="max-w-sm">
             <div className="flex flex-col gap-1">
-              <span>Local: {r.local.passed}/{r.local.total} checks (Intel TDX quote, NVIDIA GPU attestation, ECDSA signature, exact bytes)</span>
+              <span>Local: {r.local.passed}/{r.local.total} checks (Intel TDX quote, NVIDIA GPU attestation, ECDSA signature, exact bytes){STATIC ? ", verified at build time — re-run locally with pnpm verify" : ""}</span>
               <span>On-chain: {r.onchain.ok ? `contract ecrecovered ${short(r.signer)} and stored the proof` : r.onchain.error}</span>
               <span>Model {r.model}</span>
             </div>
@@ -176,6 +181,9 @@ export function App() {
 
   const refresh = useCallback(() => api<State>("/api/state").then(setSt).catch((e) => toast.error(e.message)), [])
   useEffect(() => { refresh() }, [refresh])
+  useWalletBoot()
+  // after a wallet tx: re-read once the block is final, and again a little later
+  useEffect(() => onTx(() => { setTimeout(refresh, 2500); setTimeout(refresh, 7000) }), [refresh])
   useEffect(() => {
     if (msgs[sel]) return
     api<Verified[]>(`/api/replies?token=${sel}`).then((rs) => setMsgs((m) => ({
@@ -205,6 +213,12 @@ export function App() {
   return (
     <TooltipProvider>
       <div className="mx-auto flex min-h-svh max-w-6xl flex-col gap-6 p-4 md:p-8">
+        {STATIC && (
+          <div role="note" className="rounded-lg border border-primary/40 bg-primary/10 px-3 py-2 text-xs">
+            Hosted demo (testnet). Pet state and books are read live from NEAR testnet; wallet actions are real testnet transactions. Source:{" "}
+            <a className="underline" href={REPO} target="_blank" rel="noreferrer">github.com/anonymusk7/near-petri</a>
+          </div>
+        )}
         <header className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <span className="text-3xl">🧫</span>
@@ -217,6 +231,7 @@ export function App() {
             <Button size="sm" variant={page === "pets" ? "default" : "ghost"} onClick={() => go("pets")}>Pets</Button>
             <Button size="sm" variant={page === "meme" ? "default" : "ghost"} onClick={() => go("meme")}><CoinsIcon data-icon="inline-start" />Memecoin pots</Button>
           </nav>
+          <WalletButton />
           <div className="flex flex-wrap gap-1.5">
             <Badge variant="outline">NEAR {st?.network ?? "…"}</Badge>
             {st && <Badge variant="outline" className="font-mono">{st.contract}</Badge>}
@@ -234,7 +249,7 @@ export function App() {
         <div className={cn("grid gap-6 md:grid-cols-[340px_1fr]", page !== "pets" && "hidden")}>
           <aside className="flex flex-col gap-4">
             {!st && <><Skeleton className="h-48" /><Skeleton className="h-48" /></>}
-            {st?.pets.map((p) => <PetCard key={p.token_id} pet={p} contract={st.contract} selected={p.token_id === sel} onSelect={() => setSel(p.token_id)} />)}
+            {st?.pets.map((p) => <PetCard key={p.token_id} pet={p} contract={st.contract} threshold={st.sleep_threshold} selected={p.token_id === sel} onSelect={() => setSel(p.token_id)} />)}
             {st?.arena?.map((a) => (
               <Card size="sm" key={a.id}>
                 <CardHeader>
@@ -260,7 +275,7 @@ export function App() {
             <Card size="sm">
               <CardHeader>
                 <CardTitle>Demo the sleep state</CardTitle>
-                <CardDescription>Local simulation only. Nothing is sent on-chain, and no NEAR moves.</CardDescription>
+                <CardDescription>Local simulation only{STATIC ? ", in your browser" : ""}. Nothing is sent on-chain, and no NEAR moves. (A real revive is on the pet card when a pet is asleep on testnet.)</CardDescription>
               </CardHeader>
               <CardFooter className="flex gap-2">
                 <Button size="sm" variant="outline" onClick={() => sim("drain")}><BatteryLowIcon data-icon="inline-start" />Starve</Button>
@@ -327,8 +342,8 @@ export function App() {
                     {pet.sleep_reason === "sim"
                       ? "It was starved in the local simulation only; nothing changed on-chain. Click Revive or Reset."
                       : pet.sleep_reason === "hunger"
-                        ? `Nobody has fed it for over ${hours(st?.hunger_ns)} hours${pet.last_fed_ns ? ` (last fed ${when(pet.last_fed_ns)})` : ""}, so the contract won't charge for its thoughts even though it holds ${near(pet.balance)} NEAR. Anyone can wake it with a tip (\`revive\`). Revive below wakes it in the local simulation only.`
-                        : `Its brain balance is under ${near(st?.sleep_threshold ?? "0")} NEAR, so it can't afford a thought. Anyone can wake it with a tip (\`revive\`). Revive below wakes it in the local simulation only.`}
+                        ? `Nobody has fed it for over ${hours(st?.hunger_ns)} hours${pet.last_fed_ns ? ` (last fed ${when(pet.last_fed_ns)})` : ""}, so the contract won't charge for its thoughts even though it holds ${near(pet.balance)} NEAR. Anyone can wake it with a real tip: “Revive with NEAR” on its card (\`revive\`, wallet). The Revive button in the sleep demo wakes it in the local simulation only.`
+                        : `Its brain balance is under ${near(st?.sleep_threshold ?? "0")} NEAR, so it can't afford a thought. Anyone can wake it with a real tip: “Revive with NEAR” on its card (\`revive\`, wallet). The Revive button in the sleep demo wakes it in the local simulation only.`}
                   </AlertDescription>
                 </Alert>
               )}
@@ -337,10 +352,19 @@ export function App() {
                   {pet.name} is still asleep on testnet; it is awake in the local simulation only (mock brain, nothing charged). Reset to go back to the chain state.
                 </p>
               )}
+              {STATIC && (
+                <Alert>
+                  <SparklesIcon />
+                  <AlertTitle>Chat is off in the hosted demo</AlertTitle>
+                  <AlertDescription>
+                    Live chat runs locally with your own NEAR AI key — clone the repo and run <code>pnpm web</code>. This hosted demo shows the real recorded TEE-verified conversations.
+                  </AlertDescription>
+                </Alert>
+              )}
               <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); send() }}>
                 <Input value={text} onChange={(e) => setText(e.target.value)} maxLength={500}
-                  placeholder={pet?.sim_asleep ? "Zzz…" : `Say something to ${pet?.name ?? "your pet"}`} disabled={!pet || pet.sim_asleep || busy} />
-                <Button type="submit" disabled={!pet || pet.sim_asleep || busy || !text.trim()}>
+                  placeholder={STATIC ? "Live chat: run locally (pnpm web)" : pet?.sim_asleep ? "Zzz…" : `Say something to ${pet?.name ?? "your pet"}`} disabled={STATIC || !pet || pet.sim_asleep || busy} />
+                <Button type="submit" disabled={STATIC || !pet || pet.sim_asleep || busy || !text.trim()}>
                   {busy ? <Spinner data-icon="inline-start" /> : <SendIcon data-icon="inline-start" />}Send
                 </Button>
               </form>
@@ -350,7 +374,7 @@ export function App() {
         </div>
         <footer className="text-xs text-muted-foreground">
           The checkmarks above are recorded replies from the real NEAR AI Cloud TEE (DeepSeek on Intel TDX + NVIDIA H100/H200), re-verified locally and charged on testnet.
-          New messages use the mock brain by default (no credits).
+          {STATIC ? "Live chat needs the local app (pnpm web) and your own NEAR AI key." : "New messages use the mock brain by default (no credits)."}
         </footer>
       </div>
       <Toaster />
