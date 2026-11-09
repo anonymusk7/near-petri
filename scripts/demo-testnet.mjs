@@ -11,19 +11,30 @@ const RPCS = process.env.NEAR_RPC ? [process.env.NEAR_RPC] : ['https://rpc.testn
 const PET_ID = process.env.PET_ID ?? '0';
 const DIR = path.resolve('examples/recorded');
 
+const RPC_TIMEOUT_MS = Number(process.env.RPC_TIMEOUT_MS || 10000);
+// Every RPC down (network error/timeout, not an RPC error reply): one line, exit 2.
+function unreachable(e) {
+  console.error(`testnet RPC unreachable (${RPCS.join(', ')}): ${String(e?.cause?.code ?? e?.cause?.errors?.[0]?.code ?? e?.message ?? e).slice(0, 120)}`);
+  process.exit(2);
+}
 async function view(method, args) {
-  let last;
+  let last, reachable = false;
   for (const url of RPCS) {
+    let j;
     try {
-      const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({
+      const r = await fetch(url, { method: 'POST', signal: AbortSignal.timeout(RPC_TIMEOUT_MS), headers: { 'content-type': 'application/json' }, body: JSON.stringify({
         jsonrpc: '2.0', id: 'petri', method: 'query',
         params: { request_type: 'call_function', finality: 'final', account_id: CONTRACT, method_name: method,
           args_base64: Buffer.from(JSON.stringify(args)).toString('base64') } }) });
-      const j = await r.json();
+      j = await r.json();
+    } catch (e) { last = e; continue; }
+    reachable = true;
+    try {
       if (j.error || j.result?.error) throw new Error(JSON.stringify(j.error ?? j.result.error).slice(0, 300));
       return JSON.parse(Buffer.from(j.result.result).toString('utf8'));
     } catch (e) { last = e; }
   }
+  if (!reachable) unreachable(last);
   throw last;
 }
 

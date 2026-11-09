@@ -3,30 +3,30 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 const CONTRACT = process.env.PETRI_V2 || 'v2.petri-1793597952.testnet';
 const RPCS = process.env.RPC ? [process.env.RPC] : ['https://rpc.testnet.fastnear.com', 'https://rpc.testnet.near.org'];
+const RPC_TIMEOUT_MS = Number(process.env.RPC_TIMEOUT_MS || 10000);
+// Every RPC down (network error/timeout, not an RPC error reply): one line, exit 2.
+function unreachable(e) {
+  console.error(`testnet RPC unreachable (${RPCS.join(', ')}): ${String(e?.cause?.code ?? e?.cause?.errors?.[0]?.code ?? e?.message ?? e).slice(0, 120)}`);
+  process.exit(2);
+}
 async function rpc(params, method = 'query') {
-  let err;
+  let err, reachable = false;
   for (const url of RPCS) {
+    let j;
     try {
-      const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) });
-      const j = await r.json();
-      if (j.error) throw new Error(JSON.stringify(j.error).slice(0, 200));
-      return j.result;
-    } catch (e) { err = e; }
+      const r = await fetch(url, { method: 'POST', signal: AbortSignal.timeout(RPC_TIMEOUT_MS), headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) });
+      j = await r.json();
+    } catch (e) { err = e; continue; }
+    reachable = true;
+    if (j.error) { err = new Error(JSON.stringify(j.error).slice(0, 200)); continue; }
+    return j.result;
   }
+  if (!reachable) unreachable(err);
   throw err;
 }
 async function view(method, args) {
-  let err;
-  for (const url of RPCS) {
-    try {
-      const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'query',
-        params: { request_type: 'call_function', finality: 'final', account_id: CONTRACT, method_name: method, args_base64: Buffer.from(JSON.stringify(args)).toString('base64') } }) });
-      const j = await r.json();
-      if (j.error) throw new Error(JSON.stringify(j.error).slice(0, 200));
-      return JSON.parse(Buffer.from(j.result.result).toString());
-    } catch (e) { err = e; }
-  }
-  throw err;
+  const res = await rpc({ request_type: 'call_function', finality: 'final', account_id: CONTRACT, method_name: method, args_base64: Buffer.from(JSON.stringify(args)).toString('base64') });
+  return JSON.parse(Buffer.from(res.result).toString());
 }
 const sha = (s) => createHash('sha256').update(s).digest('hex');
 console.log(`contract ${CONTRACT}`);

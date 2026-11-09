@@ -18,7 +18,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { Toaster } from "@/components/ui/sonner"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
-import { api, explorer, near, short } from "@/lib/format"
+import { api, explorer, near, short, when } from "@/lib/format"
 import { PetHistory } from "@/PetHistory"
 import { OwnerPage } from "@/OwnerPage"
 import { MemePage } from "@/MemePage"
@@ -28,11 +28,15 @@ type Pet = {
   token_id: string; name: string; owner_id: string; balance: string; replies: number; asleep: boolean
   prompt_hash: string; pet_account: string | null; account_balance?: string
   keys?: { public_key: string; permission: Perm }[]; sim_balance: string; sim_asleep: boolean
+  // sim_woke: asleep on testnet, woken by the local Revive. sleep_reason explains sim_asleep.
+  sim_woke?: boolean; sleep_reason?: SleepReason | null; chain_sleep_reason?: SleepReason | null; last_fed_ns?: string
   arena_wins?: number; tip?: { chain: string; address: string; signed_tx?: string }
 }
+type SleepReason = "hunger" | "balance" | "sim"
 type Arena = { id: number; challenge: string; question: string; rule: string; winner: string; tx: string | null
   entries: { token_id: string; response: string; chars: number; has_word: boolean }[] }
 type State = { contract: string; network: string; source: string; signers: { model: string; address: string }[]; pets: Pet[]; sleep_threshold: string
+  hunger_ns?: string
   arena?: Arena[]; tip_quote?: { amountIn: string; amountOut: string; recipient: string } | null }
 type Verified = {
   id: string; msg: string; reply: string; cost: string; chat_id: string; model: string; signer: string; tx: string
@@ -45,6 +49,7 @@ type Msg =
   | { kind: "mock"; text: string; cost: string }
 
 const FULL = 5n * 10n ** 23n // 0.5 NEAR = a full belly in the UI
+const hours = (ns?: string) => String(Number(BigInt(ns ?? 86_400_000_000_000n) / 3_600_000_000_000n))
 
 function PetFace({ pet, className }: { pet: Pet; className?: string }) {
   const sleeping = pet.sim_asleep
@@ -70,9 +75,12 @@ function PetCard({ pet, selected, onSelect, contract }: { pet: Pet; selected: bo
             <CardTitle>{pet.name} <span className="text-muted-foreground">#{pet.token_id}</span></CardTitle>
             <CardDescription className="truncate">owner {pet.owner_id}</CardDescription>
             <div>
+          <div className="flex flex-wrap gap-1">
           {pet.sim_asleep
             ? <Badge variant="secondary"><MoonIcon data-icon="inline-start" />Asleep</Badge>
-            : <Badge><SunIcon data-icon="inline-start" />Awake</Badge>}
+            : <Badge><SunIcon data-icon="inline-start" />{pet.sim_woke ? "Awake (local sim)" : "Awake"}</Badge>}
+          {pet.asleep && <Badge variant="outline"><MoonIcon data-icon="inline-start" />asleep on testnet</Badge>}
+          </div>
             </div>
           </div>
         </div>
@@ -264,15 +272,16 @@ export function App() {
 
           <Card className="flex min-h-[70svh] flex-col">
             <CardHeader>
-              <div className="flex items-center gap-3">
-                {pet ? <PetFace pet={pet} className="size-10" /> : <Skeleton className="size-10 rounded-full" />}
-                <div className="flex flex-col gap-0.5">
+              <div className="flex flex-wrap items-center gap-3">
+                {pet ? <PetFace pet={pet} className="size-10 shrink-0" /> : <Skeleton className="size-10 shrink-0 rounded-full" />}
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <CardTitle>{pet ? (view === "chat" ? `Chat with ${pet.name}` : view === "history" ? `${pet.name}'s history` : `${pet.name}: owner page`) : "Loading…"}</CardTitle>
                   <CardDescription>
-                    {pet?.pet_account ? `Replies are paid by ${pet.pet_account}` : "Replies are charged by the Petri backend"}
+                    {pet?.pet_account ? <>Replies are paid by <span className="break-all">{pet.pet_account}</span></> : "Replies are charged by the Petri backend"}
                   </CardDescription>
                 </div>
-                <div className="ml-auto flex gap-1">
+                {/* below sm the switcher gets its own row so Owner is never clipped */}
+                <div className="flex basis-full gap-1 sm:ml-auto sm:basis-auto">
                   {(["chat", "history", "owner"] as const).map((v) => (
                     <Button key={v} size="sm" variant={view === v ? "default" : "ghost"} onClick={() => setView(v)}>
                       {v === "chat" ? "Chat" : v === "history" ? "History" : "Owner"}
@@ -313,11 +322,20 @@ export function App() {
               {pet?.sim_asleep && (
                 <Alert>
                   <MoonIcon />
-                  <AlertTitle>{pet.name} is asleep</AlertTitle>
+                  <AlertTitle>{pet.name} is asleep{pet.sleep_reason === "sim" ? " (local simulation)" : " on testnet"}</AlertTitle>
                   <AlertDescription>
-                    Its brain balance is under {near(st?.sleep_threshold ?? "0")} NEAR, so it can't afford a thought. Anyone can wake it with a tip (`revive`).
+                    {pet.sleep_reason === "sim"
+                      ? "It was starved in the local simulation only; nothing changed on-chain. Click Revive or Reset."
+                      : pet.sleep_reason === "hunger"
+                        ? `Nobody has fed it for over ${hours(st?.hunger_ns)} hours${pet.last_fed_ns ? ` (last fed ${when(pet.last_fed_ns)})` : ""}, so the contract won't charge for its thoughts even though it holds ${near(pet.balance)} NEAR. Anyone can wake it with a tip (\`revive\`). Revive below wakes it in the local simulation only.`
+                        : `Its brain balance is under ${near(st?.sleep_threshold ?? "0")} NEAR, so it can't afford a thought. Anyone can wake it with a tip (\`revive\`). Revive below wakes it in the local simulation only.`}
                   </AlertDescription>
                 </Alert>
+              )}
+              {pet?.sim_woke && !pet.sim_asleep && (
+                <p className="text-xs text-muted-foreground">
+                  {pet.name} is still asleep on testnet; it is awake in the local simulation only (mock brain, nothing charged). Reset to go back to the chain state.
+                </p>
               )}
               <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); send() }}>
                 <Input value={text} onChange={(e) => setText(e.target.value)} maxLength={500}

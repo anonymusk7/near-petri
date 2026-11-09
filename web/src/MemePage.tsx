@@ -90,7 +90,7 @@ function BookCard({ b, cfg, pets, now, sym, contract }: { b: Book; cfg: Config; 
           <CardTitle>Book #{b.id}: {name(b.pets[0])} vs {name(b.pets[1])}</CardTitle>
           <Phase b={b} now={now} cfg={cfg} />
         </div>
-        <CardDescription>Opened by {short(b.opened_by, 8)} · closes {new Date(close).toLocaleString()} · {b.backers} backer{b.backers === 1 ? "" : "s"}</CardDescription>
+        <CardDescription>Opened by {short(b.opened_by, 8)} · {now >= close || b.state !== "Open" ? "closed" : "closes"} {new Date(close).toLocaleString()} · {b.backers} backer{b.backers === 1 ? "" : "s"}</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
@@ -101,12 +101,12 @@ function BookCard({ b, cfg, pets, now, sym, contract }: { b: Book; cfg: Config; 
               </span>
             ))}
           </div>
-          <div className="flex h-3 overflow-hidden rounded-full bg-muted" role="img" aria-label={`${share}% on ${name(b.pets[0])}`}>
+          <div className="flex h-3 overflow-hidden rounded-full bg-muted" role="img" aria-label={`${share.toFixed(1)}% on ${name(b.pets[0])}`}>
             <div className={cn("bg-primary transition-all", b.winner && b.winner !== b.pets[0] && "opacity-30")} style={{ width: `${share}%` }} />
             <div className={cn("flex-1 bg-amber-500 transition-all", b.winner && b.winner !== b.pets[1] && "opacity-30")} />
           </div>
           <div className="flex justify-between text-xs text-muted-foreground">
-            <span>{share}%</span><span>pot {tok(sum)} {sym}</span><span>{(100 - share).toFixed(1)}%</span>
+            <span>{share.toFixed(1)}%</span><span>pot {tok(sum)} {sym}</span><span>{(100 - share).toFixed(1)}%</span>
           </div>
         </div>
 
