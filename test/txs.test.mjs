@@ -2,7 +2,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CONTRACT, TOKEN, GAS, DEPOSIT, parseAmount, parseNear, formatAmount, tipTx, backTx, storageDepositTx,
-  openBookTx, claimTx, voidTx, reviveTx, feedTx, claimJarTx } from '../lib/txs.mjs';
+  openBookTx, claimTx, voidTx, reviveTx, feedTx, claimJarTx,
+  WRAP, REF, REF_POOL, WRAP_STORAGE, swapMsg, minOutFromQuote, swapNearForShitzuTxs, refQuoteArgs } from '../lib/txs.mjs';
 
 const fc = (tx) => { assert.equal(tx.actions.length, 1); assert.equal(tx.actions[0].type, 'FunctionCall'); return tx.actions[0].params; };
 
@@ -103,4 +104,53 @@ test('revive / feed attach NEAR in yocto', () => {
   assert.deepEqual([f.methodName, f.args, f.deposit], ['feed', { token_id: '0' }, '100000000000000000000000']);
   assert.throws(() => reviveTx('1', '0'), /greater than zero/);
   assert.throws(() => feedTx('0', '-1'), /positive/);
+});
+
+test('swapNearForShitzuTxs: fresh account = SHITZU registration, then ONE wrap.testnet tx with 3 actions (270 Tgas)', () => {
+  const txs = swapNearForShitzuTxs({ account: 'judge.testnet', nearHuman: '0.1', needsWrapStorage: true, needsShitzuStorage: true, minOut: '675000000000000000000' });
+  assert.equal(txs.length, 2);
+  assert.deepEqual(txs[0], storageDepositTx('judge.testnet'));
+  assert.equal(txs[0].receiverId, TOKEN);
+  const w = txs[1];
+  assert.equal(w.receiverId, 'wrap.testnet');
+  assert.deepEqual(w.actions.map((a) => a.type), ['FunctionCall', 'FunctionCall', 'FunctionCall']);
+  const [sd, nd, ftc] = w.actions.map((a) => a.params);
+  assert.deepEqual(sd, { methodName: 'storage_deposit', args: { account_id: 'judge.testnet', registration_only: true }, gas: '10000000000000', deposit: '1250000000000000000000' });
+  assert.deepEqual(nd, { methodName: 'near_deposit', args: {}, gas: '10000000000000', deposit: '100000000000000000000000' });
+  assert.equal(ftc.methodName, 'ft_transfer_call');
+  assert.equal(ftc.gas, '250000000000000');
+  assert.equal(ftc.deposit, '1');
+  assert.deepEqual(ftc.args, { receiver_id: 'ref-finance-101.testnet', amount: '100000000000000000000000',
+    msg: '{"force":0,"actions":[{"pool_id":2190,"token_in":"wrap.testnet","token_out":"shitzu-0.factory.v10.meme-cooking.testnet","min_amount_out":"675000000000000000000"}]}' });
+  const total = w.actions.reduce((g, a) => g + BigInt(a.params.gas), 0n);
+  assert.ok(total <= 300n * 10n ** 12n, `total gas ${total}`);
+});
+
+test('swapNearForShitzuTxs: registered account = one tx (near_deposit + ft_transfer_call), same msg as the recorded swap', () => {
+  const txs = swapNearForShitzuTxs({ account: 'guest1-1793595336.testnet', nearHuman: '0.5' });
+  assert.equal(txs.length, 1);
+  assert.equal(txs[0].receiverId, WRAP);
+  assert.deepEqual(txs[0].actions.map((a) => a.params.methodName), ['near_deposit', 'ft_transfer_call']);
+  // byte-for-byte the args of tx 9DHmBWkCDRw5QniEA3rWzrg1E2SofRjrYPWVWGX2D7Vn
+  assert.deepEqual(txs[0].actions[1].params.args, { amount: '500000000000000000000000', receiver_id: REF,
+    msg: '{"force":0,"actions":[{"pool_id":2190,"token_in":"wrap.testnet","token_out":"shitzu-0.factory.v10.meme-cooking.testnet","min_amount_out":"1"}]}' });
+  assert.equal(swapMsg('1'), txs[0].actions[1].params.args.msg);
+  // only the wrap storage, no SHITZU registration
+  const t2 = swapNearForShitzuTxs({ account: 'a.testnet', nearHuman: '1', needsWrapStorage: true, wrapStorage: '2000' });
+  assert.equal(t2.length, 1);
+  assert.deepEqual(t2[0].actions.map((a) => a.params.methodName), ['storage_deposit', 'near_deposit', 'ft_transfer_call']);
+  assert.equal(t2[0].actions[0].params.deposit, '2000');
+  assert.throws(() => swapNearForShitzuTxs({ account: 'a.testnet', nearHuman: '0' }), /greater than zero/);
+  assert.throws(() => swapNearForShitzuTxs({ account: 'a.testnet', nearHuman: '1', minOut: '0' }), /minOut/);
+  assert.throws(() => swapNearForShitzuTxs({ account: 'Bad', nearHuman: '1', needsShitzuStorage: true }), /bad account/);
+});
+
+test('minOutFromQuote: 95% of the get_return quote, "1" without a quote; refQuoteArgs', () => {
+  assert.equal(minOutFromQuote('710694998737521562204'), '675160248800645484093');
+  assert.equal(minOutFromQuote('100', 9000), '90');
+  for (const q of [null, undefined, '', '0', 'abc', '-5']) assert.equal(minOutFromQuote(q), '1');
+  assert.equal(minOutFromQuote('1'), '1');
+  assert.equal(WRAP_STORAGE, '1250000000000000000000');
+  assert.equal(REF_POOL, 2190);
+  assert.deepEqual(refQuoteArgs('0.1'), { pool_id: 2190, token_in: 'wrap.testnet', amount_in: '100000000000000000000000', token_out: TOKEN });
 });

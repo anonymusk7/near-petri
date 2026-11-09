@@ -86,7 +86,7 @@ export function WalletButton() {
 export function NoShitzu() {
   return (
     <p className="text-xs text-muted-foreground">
-      You need testnet SHITZU to tip or bet: get testnet SHITZU on{" "}
+      You need testnet SHITZU to tip or bet: swap testnet NEAR for it in the "Get SHITZU" card on the Pots tab, or get it on{" "}
       <a className="underline" href={SHITZU_URL} target="_blank" rel="noreferrer">meme.cooking (testnet)</a>. Opening a book and reviving a pet only need NEAR.
     </p>
   )

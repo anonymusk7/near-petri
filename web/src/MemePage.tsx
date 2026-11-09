@@ -15,6 +15,7 @@ import { view } from "@/lib/rpc"
 import { backTx, claimTx, DEPOSIT, openBookTx, parseAmount, tipTx, voidTx, WINDOWS } from "@/lib/txs"
 import { onTx, signIn, useAccount } from "@/lib/wallet"
 import { fmtShitzu, NoShitzu, runTx, Terminal, useShitzu, withRegistration } from "@/Wallet"
+import { GetShitzu } from "@/GetShitzu"
 
 type Config = { token: string; rake_bps: number; min_window_secs: number; max_window_secs: number; void_after_secs: number }
 type Book = {
@@ -335,6 +336,7 @@ export function MemePage({ pets }: { pets: PetLite[] }) {
           {m.books.map((b) => <BookCard key={b.id} b={b} cfg={cfg} pets={pets} now={now} sym={sym} contract={m.contract} decimals={decimals} sh={sh} />)}
         </div>
         <aside className="flex flex-col gap-4">
+          <GetShitzu />
           <Lookup books={m.books} sym={sym} pets={pets} />
           {!hasOpen && (
             <Card size="sm">
