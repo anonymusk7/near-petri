@@ -24,7 +24,9 @@
     "web:build": "pnpm web:install && pnpm --dir web build",
     "web": "pnpm web:build && node web/server.mjs",
     "record:moss": "MOCK_AI=0 node scripts/record-moss.mjs",
-    "record:pot": "MOCK_AI=0 node scripts/record-pot.mjs"
+    "record:pot": "MOCK_AI=0 node scripts/record-pot.mjs",
+    "web:export": "node scripts/export-static.mjs",
+    "web:static": "pnpm web:install && pnpm web:export && VITE_STATIC=1 pnpm --dir web build && node scripts/scan-static.mjs web/dist-static"
   },
   "dependencies": {
     "@phala/dcap-qvl": "0.7.0",
