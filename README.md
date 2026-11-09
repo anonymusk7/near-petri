@@ -182,7 +182,7 @@ Recorded by `pnpm record:pot` (PAID, ~$0.0002, refuses to run twice). The unit t
 
 ## Run
 ```
-# needs Rust 1.86 (rust-toolchain) + wasm32-unknown-unknown, Node 20+, pnpm
+# needs rustup (installs Rust 1.86 + the wasm32-unknown-unknown target from rust-toolchain), Node 20+, pnpm
 pnpm i
 pnpm test                    # cargo unit tests + node tests (offline, mock AI by default)
 pnpm verify examples/recorded/reply-1.json
