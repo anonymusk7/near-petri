@@ -245,7 +245,7 @@ export function MemePage({ pets }: { pets: PetLite[] }) {
                 <CardDescription>Tips plus rake from won books. Only the pet's current NFT owner can withdraw it (meme_claim_jar).</CardDescription></CardHeader>
               <CardContent className="flex items-end justify-between gap-2">
                 <span className="font-mono text-2xl font-semibold">{tok(j.amount)} <span className="text-sm text-muted-foreground">{sym}</span></span>
-                <Copy text={tipCmd(j.token_id)} label={`Tip 10 ${sym}`} />
+                <Copy text={tipCmd(j.token_id)} label={`Copy tip command (10 ${sym})`} />
               </CardContent>
             </Card>
           )
