@@ -39,7 +39,7 @@ export async function runTx(label: string, txs: TxDesc[]): Promise<boolean> {
   }
 }
 
-/** Restores a previous wallet session and reports a MyNearWallet redirect result once, on page load. */
+/** Restores a previous wallet session and reports a redirect-wallet result once, on page load. */
 export function useWalletBoot() {
   useEffect(() => {
     initWallet().catch((e) => toast.error("Wallet selector failed to load", { description: (e as Error).message }))

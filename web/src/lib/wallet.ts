@@ -1,6 +1,7 @@
-// Browser wallet (NEAR Wallet Selector: MyNearWallet + Meteor, testnet), modeled on ShowUp's initWallet.
-// The selector code is loaded on first use so the main bundle stays small. Transactions are built by
-// lib/txs.mjs and only converted to wallet actions here. This page never sees a private key.
+// Browser wallet (NEAR Wallet Selector: Meteor Wallet, testnet), modeled on ShowUp's initWallet.
+// MyNearWallet is omitted: it no longer accepts new app connections. The selector code is loaded
+// on first use so the main bundle stays small. Transactions are built by lib/txs.mjs and only
+// converted to wallet actions here. This page never sees a private key.
 import { useSyncExternalStore } from "react"
 import type { WalletSelector } from "@near-wallet-selector/core"
 import type { WalletSelectorModal } from "@near-wallet-selector/modal-ui"
@@ -16,16 +17,17 @@ const emit = () => subs.forEach((f) => f())
 
 export function initWallet(): Promise<Api> {
   ready ??= (async () => {
-    const [{ setupWalletSelector }, { setupMyNearWallet }, { setupMeteorWallet }, { setupModal }, css] = await Promise.all([
-      import("@near-wallet-selector/core"), import("@near-wallet-selector/my-near-wallet"), import("@near-wallet-selector/meteor-wallet"),
+    const [{ setupWalletSelector }, { setupMeteorWallet }, { setupModal }, css] = await Promise.all([
+      import("@near-wallet-selector/core"), import("@near-wallet-selector/meteor-wallet"),
       import("@near-wallet-selector/modal-ui"), import("@near-wallet-selector/modal-ui/styles.css?inline"),
     ])
     if (!document.getElementById("petri-wallet-css")) {
       const st = document.createElement("style"); st.id = "petri-wallet-css"; st.textContent = css.default; document.head.appendChild(st)
     }
-    const selector = await setupWalletSelector({ network: "testnet", modules: [setupMyNearWallet(), setupMeteorWallet()] })
+    // Meteor first (and only): MyNearWallet no longer accepts new app connections.
+    const selector = await setupWalletSelector({ network: "testnet", modules: [setupMeteorWallet()] })
     const modal = setupModal(selector, { contractId: CONTRACT,
-      description: "Sign in with a NEAR testnet wallet. Petri only asks your wallet to sign the exact tip, bet, book, revive, feed or claim call you click." })
+      description: "Sign in with Meteor Wallet on NEAR testnet. Petri only asks your wallet to sign the exact tip, bet, book, revive, feed or claim call you click." })
     const sync = () => {
       const a = selector.store.getState().accounts.find((x) => x.active)?.accountId ?? null
       if (a !== account) { account = a; emit() }
@@ -77,7 +79,7 @@ export async function send(txs: TxDesc[]): Promise<SendResult> {
   return { hashes, failed }
 }
 
-/** MyNearWallet's redirect flow comes back with ?transactionHashes=… or ?errorCode=…; read and strip them. */
+/** Some wallets' redirect flow comes back with ?transactionHashes=… or ?errorCode=…; read and strip them. */
 export function takeRedirectResult(): { hashes: string[]; error: string | null } | null {
   const u = new URL(location.href)
   const h = u.searchParams.get("transactionHashes"), code = u.searchParams.get("errorCode")
