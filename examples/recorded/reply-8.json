@@ -1,0 +1,69 @@
+{
+  "v": 1,
+  "chat_id": "chatcmpl-f01f7627-6e07-4e9d-89f7-5ebab0a2c924",
+  "model": "deepseek-ai/DeepSeek-V4.1-Flash-1017",
+  "request_hash": "927a04918354b5b058f54a8bec7a58cd1299e2adc994c50cedc189aa77cb293f",
+  "response_hash": "3d8e8a70a76178290c0e02be7bd6fc574146e21c46e1118e586fada25f7f4ed3",
+  "signature": {
+    "text": "deepseek-ai/DeepSeek-V4.1-Flash-1017:927a04918354b5b058f54a8bec7a58cd1299e2adc994c50cedc189aa77cb293f:3d8e8a70a76178290c0e02be7bd6fc574146e21c46e1118e586fada25f7f4ed3",
+    "signature": "0x94702c27d693016050fb6e1ac54046a97b99e5be294aa32a097a4bd569dc6c9123fb1a40b168172b7d5d88a973efd390f78b2003ce6de1680b00abdd0932518b1c",
+    "signing_address": "0xfe0071895500a9755c18044948ab4f4e1a7f337e",
+    "signing_algo": "ecdsa",
+    "signature_kind": "provider_tee"
+  },
+  "signing_address": "0xfe0071895500a9755c18044948ab4f4e1a7f337e",
+  "attestation": {
+    "nonce": "20c1f23198894e6a767a61bde356801f375f97a78eb88beae7d549b2806f931a",
+    "verified_at": 1793781601,
+    "gateway": {
+      "signing_address": "0xb98a789cdc4817275f5155593ba73ef2a957e779",
+      "tcb_status": "UpToDate",
+      "compose_hash": "c579aadec728a15f18d389d70f6b529302986868afd9ae3a93960b28043ef303"
+    },
+    "model": {
+      "signing_address": "0xfe0071895500a9755c18044948ab4f4e1a7f337e",
+      "signing_algo": "ecdsa",
+      "tcb_status": "UpToDate",
+      "compose_hash": "ae66f844658a7aee331dcb9fb59bd40323d71d192d37719e022cc4af8389265b",
+      "rtmr3": "b82e033606007266ad7f92273645be6c06ef5712dc5c110ec1e306d79afd14e1a9e41e092353383cbc189d57768f5b8d",
+      "gpu": {
+        "overall": true,
+        "iat": 1793781599,
+        "gpus": 8,
+        "arch": "HOPPER"
+      }
+    },
+    "candidates": 1
+  },
+  "pet": {
+    "token_id": "0",
+    "name": "Mochi",
+    "prompt": "Cheerful moss creature who loves rain.",
+    "prompt_hash": "d691db075710cfc9e33cbdebc2e3c60d64c77aed02aa383c9f0c9a3ee083871b"
+  },
+  "msg": "Arena round 2: describe a dog in one line and use the word bone.",
+  "reply": "A loyal, waggy-tailed dog trots happily with a bone in its mouth.",
+  "usage": {
+    "prompt_tokens": 79,
+    "completion_tokens": 80
+  },
+  "cost": "1159000000000000000000",
+  "receipt": {
+    "v": 2,
+    "token_id": "0",
+    "prompt_hash": "d691db075710cfc9e33cbdebc2e3c60d64c77aed02aa383c9f0c9a3ee083871b",
+    "chat_id": "chatcmpl-f01f7627-6e07-4e9d-89f7-5ebab0a2c924",
+    "model": "deepseek-ai/DeepSeek-V4.1-Flash-1017",
+    "request_hash": "927a04918354b5b058f54a8bec7a58cd1299e2adc994c50cedc189aa77cb293f",
+    "response_hash": "3d8e8a70a76178290c0e02be7bd6fc574146e21c46e1118e586fada25f7f4ed3"
+  },
+  "reply_hash": "8c2c7bf99cfc15fe868f11cfcba710f7ae796bf8bbe36e29bb621dd1baa5e923",
+  "request": "{\"model\":\"deepseek-ai/DeepSeek-V4.1-Flash-1017\",\"messages\":[{\"role\":\"system\",\"content\":\"You are Mochi, a Petri pet living on NEAR. Cheerful moss creature who loves rain. Answer in at most two short sentences.\"},{\"role\":\"user\",\"content\":\"Arena round 2: describe a dog in one line and use the word bone.\"}],\"max_tokens\":400,\"stream\":false}",
+  "response": "{\"id\":\"chatcmpl-f01f7627-6e07-4e9d-89f7-5ebab0a2c924\",\"object\":\"chat.completion\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"A loyal, waggy-tailed dog trots happily with a bone in its mouth.\",\"reasoning_content\":\"We need answer at most two short sentences. Arena round 2 describe dog one line use word bone. Need concise cheerful. One line describing dog with bone. Ensure one line maybe \\\"A loyal, waggy-tailed dog trots happily with a bone in its mouth.\\\" That's one sentence. Good.\"},\"finish_reason\":\"stop\",\"logprobs\":null}],\"model\":\"deepseek-ai/DeepSeek-V4.1-Flash-1017\",\"created\":1793781602,\"usage\":{\"prompt_tokens\":79,\"total_tokens\":159,\"completion_tokens\":80,\"prompt_tokens_details\":{\"cached_tokens\":0,\"created_cache_tokens\":64},\"completion_tokens_details\":{\"reasoning_tokens\":61}},\"system_fingerprint\":\"vllm-0.32.0-dp8-ep-0660c9b9\"}",
+  "evidence": "preflight-20c1f2319889.json",
+  "arena": {
+    "round": "arena-1",
+    "challenge": "bone",
+    "meme_book": "1"
+  }
+}

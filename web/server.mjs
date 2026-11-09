@@ -1,5 +1,7 @@
 // Petri local web app: serves web/dist and a small JSON API.
 //   GET  /api/state            pets #0/#1 read live from testnet (falls back to web/snapshot.json offline)
+//   GET  /api/meme             SHITZU memecoin pots: config, books (+demo backers), pet jars (falls back to web/meme-snapshot.json)
+//   GET  /api/meme/account?book=N&account=A   one account's stake and claimable payout
 //   GET  /api/replies?token=N  the pet's REAL recorded NEAR AI TEE replies, each re-verified
 //                              locally (Intel TDX + NVIDIA + ECDSA) and checked against the
 //                              on-chain proof the contract stored (get_tee_proof)
@@ -68,6 +70,45 @@ async function rpc(params) {
 }
 const view = async (m, a) => JSON.parse(Buffer.from((await rpc({ request_type: 'call_function', finality: 'final',
   account_id: CONTRACT, method_name: m, args_base64: Buffer.from(JSON.stringify(a)).toString('base64') })).result).toString());
+
+const viewAt = async (acct, m, a) => JSON.parse(Buffer.from((await rpc({ request_type: 'call_function', finality: 'final',
+  account_id: acct, method_name: m, args_base64: Buffer.from(JSON.stringify(a)).toString('base64') })).result).toString());
+
+// ---------- memecoin pots (SHITZU tips + arena prediction books) ----------
+const MSNAP = path.join(ROOT, 'meme-snapshot.json');
+// Live txs from the README (round 5 void/refund demo, round 6 live settle + payout), per book.
+const MEME_TXS = {
+  0: [['open', 'DMvnUhjXy6aLohsZWeEfZHXmQW2iKsGJpRnt8DK7DmUq'], ['back Moss 500', '3DKThY5bP23mFd76dnt3BpZqXsMhtz6rPJVpaeyjWu6F'],
+      ['back Mochi 300', 'FzErHfGxV5Txfq7pheknR3j5vjFHE2H6ze47udHTXapf'], ['void', '3hHck4vT5G1zcTCQC5pf2uUWfoxfNqxHd8caWMHAFCz8'],
+      ['refund guest1', 'HHa188pYzpmnqnnAtt5dgArPXjpAkn3jY9BUcskjmoDq'], ['refund guest2', 'TjHRvSEtKZubHAfd8aenVK5P136YYGhHa7wWT73djMu']],
+  1: [['open', '8ZzeteQhoXfXVEwbJTiKPSD7c2oQ8SUZzW9UWrPpM3eC'], ['back Moss 200', 'zFcgNWz1r7UF63gF4y8qSHZSN9S6a8cy7RzwVLNex1B'],
+      ['back Mochi 150', '78BqpsVPaxPzW2r12S8EcbEsDWGjzXxKvPospY5aESPb'], ['back Mochi 50', '8mnNUKbm5FCHQVinTpTNVvDGMN11XW8mfajX1JYXHUAR'],
+      ['arena_settle', '2DEmzZhuR41hpRLstGbMC2Tuo5rXw4uq1Z25j9rBV1aC'], ['payout guest1', 'DhrChVE53QFYxqMHpJpf7UFjXBngzCW6YRaGJ4TozeP7'],
+      ['payout guest2', 'C8cWxtUunFs1D4ocFb5L73SLY55LZH1RdzSBsixF7Tau'], ['jar → owner', 'H9xyJbGcUCS6bn7rfw38yxuHDvLYKpjdWS6PH9Vv44iM']],
+};
+async function memeChain() {
+  const config = await view('meme_get_config', {});
+  if (!config) return { config: null, books: [], jars: [] };
+  const [count, meta] = await Promise.all([view('meme_get_book_count', {}), viewAt(config.token, 'ft_metadata', {}).catch(() => null)]);
+  const ids = [...Array(Number(count)).keys()].reverse().slice(0, 20);
+  const books = await Promise.all(ids.map(async (id) => {
+    const b = await view('meme_get_book', { book_id: String(id) });
+    b.txs = MEME_TXS[id] ?? [];
+    return b;
+  }));
+  const jars = await Promise.all(['0', '1'].map(async (t) => ({ token_id: t, amount: await view('meme_get_jar', { token_id: t }) })));
+  return { config, token: meta ? { symbol: meta.symbol, decimals: meta.decimals, icon: meta.icon ?? null } : { symbol: 'SHITZU', decimals: 18, icon: null }, books, jars };
+}
+async function meme() {
+  try { return { ...(await memeChain()), contract: CONTRACT, now_ms: Date.now(), source: 'testnet' }; } catch (e) {
+    return { ...JSON.parse(fs.readFileSync(MSNAP, 'utf8')), now_ms: Date.now(), source: 'snapshot', error: String(e.message).slice(0, 120) };
+  }
+}
+async function memeAccount(book, account) {
+  if (!/^[a-z0-9._-]{2,64}$/.test(account ?? '') || !/^\d{1,10}$/.test(book ?? '')) throw new Error('bad account or book id');
+  const [stake, claimable] = await Promise.all([view('meme_get_stake', { book_id: book, account_id: account }), view('meme_get_claimable', { book_id: book, account_id: account })]);
+  return { book, account, stake, claimable };
+}
 
 async function chainState() {
   const [signers, p0, p1] = await Promise.all([view('get_tee_signers', {}), view('get_pet', { token_id: '0' }), view('get_pet', { token_id: '1' })]);
@@ -242,6 +283,8 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/api/history') return json(res, 200, await history(url.searchParams.get('token') ?? '0'));
     if (url.pathname === '/api/owner/challenge') return json(res, 200, newChallenge(url.searchParams.get('token') ?? '0'));
     if (url.pathname === '/api/owner/verify' && req.method === 'POST') return json(res, 200, await verifyOwner(await readBody(req)));
+    if (url.pathname === '/api/meme') return json(res, 200, await meme());
+    if (url.pathname === '/api/meme/account') return json(res, 200, await memeAccount(url.searchParams.get('book'), url.searchParams.get('account')));
     if (url.pathname === '/api/replies') return json(res, 200, await replies(url.searchParams.get('token') ?? '0'));
     if (url.pathname === '/api/chat' && req.method === 'POST') {
       const { token_id = '0', msg } = await readBody(req);
@@ -283,6 +326,8 @@ if (process.argv.includes('--snapshot')) {
   const s = await chainState();
   fs.writeFileSync(SNAP, JSON.stringify(s, null, 2) + '\n');
   console.log(`wrote ${SNAP}`);
+  fs.writeFileSync(MSNAP, JSON.stringify({ ...(await memeChain()), contract: CONTRACT, fetched_at: new Date().toISOString() }, null, 2) + '\n');
+  console.log(`wrote ${MSNAP}`);
 }
 if (process.argv.includes('--snapshot') || process.argv.includes('--history-snapshot')) {
   const h = await chainHistoryEvents();

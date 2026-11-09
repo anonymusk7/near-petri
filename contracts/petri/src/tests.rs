@@ -553,6 +553,10 @@ fn raw(n: u8) -> (String, String, String) {
     let (rq, rs, sg) = match n {
         5 => (include_str!("../../../examples/recorded/raw/reply-5.request.json"), include_str!("../../../examples/recorded/raw/reply-5.response.json"),
               include_str!("../../../examples/recorded/raw/reply-5.signature.json")),
+        8 => (include_str!("../../../examples/recorded/raw/reply-8.request.json"), include_str!("../../../examples/recorded/raw/reply-8.response.json"),
+              include_str!("../../../examples/recorded/raw/reply-8.signature.json")),
+        9 => (include_str!("../../../examples/recorded/raw/reply-9.request.json"), include_str!("../../../examples/recorded/raw/reply-9.response.json"),
+              include_str!("../../../examples/recorded/raw/reply-9.signature.json")),
         _ => (include_str!("../../../examples/recorded/raw/reply-6.request.json"), include_str!("../../../examples/recorded/raw/reply-6.response.json"),
               include_str!("../../../examples/recorded/raw/reply-6.signature.json")),
     };
@@ -961,4 +965,27 @@ fn charge_and_settle(p: &mut Petri) -> ArenaRound {
     let (a, b, d) = (6_666u128 * N, 10_000u128 * N, 7_777u128 * N);
     assert_eq!(mul_div(a, b, d), 8_571_428_571_428_571_428_571_428_571u128); // 6666e24*10000e24/7777e24
     assert_eq!(mul_div(3, 7, 4), 5);
+}
+
+/// Round 6 replayed exactly as it ran live on testnet: real reply-8 (Mochi) and reply-9 (Moss),
+/// the same stakes, and the same payouts the live meme_claim txs paid.
+#[test] fn meme_live_round6_replay_mochi_wins_exact_payouts() {
+    const T: u128 = 1_000_000_000_000_000_000;
+    let mut p = meme_arena();
+    ft(&mut p, 10 * SEC, "guest1", 200 * T, &back(0, "1"));
+    ft(&mut p, 11 * SEC, "guest2", 150 * T, &back(0, "0"));
+    ft(&mut p, 12 * SEC, "guest1", 50 * T, &back(0, "0"));
+    for (id, n, prompt) in [("0", 8u8, R_PROMPT), ("1", 9, MOSS_PROMPT)] {
+        let (rq, rs, sg) = raw(n); ctx("backend", HOUR, 0);
+        p.charge_verified(id.into(), NearToken::from_yoctonear(MILLI), prompt.into(), rq, sha(&rs), sg);
+    }
+    let e = [("0", 8u8), ("1", 9)].map(|(id, n)| { let (rq, rs, _) = raw(n); ArenaEntryInput { token_id: id.into(), request: rq, response: rs } });
+    ctx("guest1", 2 * HOUR, N / 10);
+    let r = p.arena_settle("bone".into(), e.into());
+    assert_eq!(r.winner, "0");
+    let b = p.meme_get_book(U64(0)).unwrap();
+    assert_eq!((b.state, b.rake.0), (BookState::Settled, 10 * T));
+    assert_eq!(p.meme_get_claimable(U64(0), acc("guest1")).0, 97 * T + T / 2);
+    assert_eq!(p.meme_get_claimable(U64(0), acc("guest2")).0, 292 * T + T / 2);
+    assert_eq!(p.meme_get_jar("0".into()).0, 10 * T);
 }

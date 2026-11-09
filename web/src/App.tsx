@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils"
 import { api, explorer, near, short } from "@/lib/format"
 import { PetHistory } from "@/PetHistory"
 import { OwnerPage } from "@/OwnerPage"
+import { MemePage } from "@/MemePage"
 
 type Perm = { FunctionCall?: { allowance: string | null; receiver_id: string; method_names: string[] } } | string
 type Pet = {
@@ -157,6 +158,8 @@ function VerifiedReply({ r, petName }: { r: Verified; petName: string }) {
 export function App() {
   const [st, setSt] = useState<State | null>(null)
   const [sel, setSel] = useState("1")
+  const [page, setPage] = useState<"pets" | "meme">(() => (location.hash === "#pots" ? "meme" : "pets"))
+  const go = (p: "pets" | "meme") => { setPage(p); history.replaceState(null, "", p === "meme" ? "#pots" : "#") }
   const [msgs, setMsgs] = useState<Record<string, Msg[]>>({})
   const [text, setText] = useState("")
   const [busy, setBusy] = useState(false)
@@ -202,6 +205,10 @@ export function App() {
               <p className="text-sm text-muted-foreground">AI pets that pay for their own brain. Every thought is TEE-signed and checked on-chain.</p>
             </div>
           </div>
+          <nav className="flex gap-1 rounded-lg border p-1" aria-label="section">
+            <Button size="sm" variant={page === "pets" ? "default" : "ghost"} onClick={() => go("pets")}>Pets</Button>
+            <Button size="sm" variant={page === "meme" ? "default" : "ghost"} onClick={() => go("meme")}><CoinsIcon data-icon="inline-start" />Memecoin pots</Button>
+          </nav>
           <div className="flex flex-wrap gap-1.5">
             <Badge variant="outline">NEAR {st?.network ?? "…"}</Badge>
             {st && <Badge variant="outline" className="font-mono">{st.contract}</Badge>}
@@ -215,7 +222,8 @@ export function App() {
           </div>
         </header>
 
-        <div className="grid gap-6 md:grid-cols-[340px_1fr]">
+        {page === "meme" && <MemePage pets={st?.pets ?? []} />}
+        <div className={cn("grid gap-6 md:grid-cols-[340px_1fr]", page !== "pets" && "hidden")}>
           <aside className="flex flex-col gap-4">
             {!st && <><Skeleton className="h-48" /><Skeleton className="h-48" /></>}
             {st?.pets.map((p) => <PetCard key={p.token_id} pet={p} contract={st.contract} selected={p.token_id === sel} onSelect={() => setSel(p.token_id)} />)}

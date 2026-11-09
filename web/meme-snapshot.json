@@ -1,0 +1,124 @@
+{
+  "config": {
+    "token": "shitzu-0.factory.v10.meme-cooking.testnet",
+    "rake_bps": 500,
+    "min_window_secs": 60,
+    "max_window_secs": 86400,
+    "void_after_secs": 600
+  },
+  "token": {
+    "symbol": "SHITZU",
+    "decimals": 18,
+    "icon": "data:image/png;base64,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"
+  },
+  "books": [
+    {
+      "id": "1",
+      "pets": [
+        "0",
+        "1"
+      ],
+      "opened_by": "guest2-1793595336.testnet",
+      "closes_at_ns": "1793781586820247148",
+      "totals": [
+        "200000000000000000000",
+        "200000000000000000000"
+      ],
+      "backers": 2,
+      "state": "Settled",
+      "winner": "0",
+      "arena_id": "1",
+      "rake": "10000000000000000000",
+      "txs": [
+        [
+          "open",
+          "8ZzeteQhoXfXVEwbJTiKPSD7c2oQ8SUZzW9UWrPpM3eC"
+        ],
+        [
+          "back Moss 200",
+          "zFcgNWz1r7UF63gF4y8qSHZSN9S6a8cy7RzwVLNex1B"
+        ],
+        [
+          "back Mochi 150",
+          "78BqpsVPaxPzW2r12S8EcbEsDWGjzXxKvPospY5aESPb"
+        ],
+        [
+          "back Mochi 50",
+          "8mnNUKbm5FCHQVinTpTNVvDGMN11XW8mfajX1JYXHUAR"
+        ],
+        [
+          "arena_settle",
+          "2DEmzZhuR41hpRLstGbMC2Tuo5rXw4uq1Z25j9rBV1aC"
+        ],
+        [
+          "payout guest1",
+          "DhrChVE53QFYxqMHpJpf7UFjXBngzCW6YRaGJ4TozeP7"
+        ],
+        [
+          "payout guest2",
+          "C8cWxtUunFs1D4ocFb5L73SLY55LZH1RdzSBsixF7Tau"
+        ],
+        [
+          "jar \u2192 owner",
+          "H9xyJbGcUCS6bn7rfw38yxuHDvLYKpjdWS6PH9Vv44iM"
+        ]
+      ]
+    },
+    {
+      "id": "0",
+      "pets": [
+        "0",
+        "1"
+      ],
+      "opened_by": "guest2-1793595336.testnet",
+      "closes_at_ns": "1793780010734253310",
+      "totals": [
+        "300000000000000000000",
+        "500000000000000000000"
+      ],
+      "backers": 2,
+      "state": "Void",
+      "winner": null,
+      "arena_id": null,
+      "rake": "0",
+      "txs": [
+        [
+          "open",
+          "DMvnUhjXy6aLohsZWeEfZHXmQW2iKsGJpRnt8DK7DmUq"
+        ],
+        [
+          "back Moss 500",
+          "3DKThY5bP23mFd76dnt3BpZqXsMhtz6rPJVpaeyjWu6F"
+        ],
+        [
+          "back Mochi 300",
+          "FzErHfGxV5Txfq7pheknR3j5vjFHE2H6ze47udHTXapf"
+        ],
+        [
+          "void",
+          "3hHck4vT5G1zcTCQC5pf2uUWfoxfNqxHd8caWMHAFCz8"
+        ],
+        [
+          "refund guest1",
+          "HHa188pYzpmnqnnAtt5dgArPXjpAkn3jY9BUcskjmoDq"
+        ],
+        [
+          "refund guest2",
+          "TjHRvSEtKZubHAfd8aenVK5P136YYGhHa7wWT73djMu"
+        ]
+      ]
+    }
+  ],
+  "jars": [
+    {
+      "token_id": "0",
+      "amount": "0"
+    },
+    {
+      "token_id": "1",
+      "amount": "0"
+    }
+  ],
+  "contract": "v2.petri-1793597952.testnet",
+  "fetched_at": "2026-11-04T08:45:06.474997Z"
+}

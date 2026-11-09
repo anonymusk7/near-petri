@@ -1,0 +1,69 @@
+{
+  "v": 1,
+  "chat_id": "chatcmpl-d2a3d232-4ec3-4be6-bccd-0b5103d11789",
+  "model": "deepseek-ai/DeepSeek-V4.1-Flash-1017",
+  "request_hash": "4f463cc750db7d009963b69e838daed136160ea2a09471a22c0643941b3554fd",
+  "response_hash": "b4f7f299934d9bb00558e88fddeda9e39109b2e7d0ab12c9511b3a3405155287",
+  "signature": {
+    "text": "deepseek-ai/DeepSeek-V4.1-Flash-1017:4f463cc750db7d009963b69e838daed136160ea2a09471a22c0643941b3554fd:b4f7f299934d9bb00558e88fddeda9e39109b2e7d0ab12c9511b3a3405155287",
+    "signature": "0x25594ac98022a11a21c1743d52ef4d9138befa9c81805bafaaaaa91e7e65b34873e1aaa4e86ee7a38729fcfa5d28a6975fc8a21174c418f721992365452e6ebd1c",
+    "signing_address": "0xfe0071895500a9755c18044948ab4f4e1a7f337e",
+    "signing_algo": "ecdsa",
+    "signature_kind": "provider_tee"
+  },
+  "signing_address": "0xfe0071895500a9755c18044948ab4f4e1a7f337e",
+  "attestation": {
+    "nonce": "20c1f23198894e6a767a61bde356801f375f97a78eb88beae7d549b2806f931a",
+    "verified_at": 1793781601,
+    "gateway": {
+      "signing_address": "0xb98a789cdc4817275f5155593ba73ef2a957e779",
+      "tcb_status": "UpToDate",
+      "compose_hash": "c579aadec728a15f18d389d70f6b529302986868afd9ae3a93960b28043ef303"
+    },
+    "model": {
+      "signing_address": "0xfe0071895500a9755c18044948ab4f4e1a7f337e",
+      "signing_algo": "ecdsa",
+      "tcb_status": "UpToDate",
+      "compose_hash": "ae66f844658a7aee331dcb9fb59bd40323d71d192d37719e022cc4af8389265b",
+      "rtmr3": "b82e033606007266ad7f92273645be6c06ef5712dc5c110ec1e306d79afd14e1a9e41e092353383cbc189d57768f5b8d",
+      "gpu": {
+        "overall": true,
+        "iat": 1793781599,
+        "gpus": 8,
+        "arch": "HOPPER"
+      }
+    },
+    "candidates": 1
+  },
+  "pet": {
+    "token_id": "1",
+    "name": "Moss",
+    "prompt": "Sleepy moss creature who answers in calm, tiny whispers.",
+    "prompt_hash": "e9947b34bb71765dfb205786be8807bcf7fda643a6b397e04515b765450a87a0"
+  },
+  "msg": "Arena round 2: describe a dog in one line and use the word bone.",
+  "reply": "A dog is a loyal, wagging friend who will bury a bone and then forget where.",
+  "usage": {
+    "prompt_tokens": 80,
+    "completion_tokens": 84
+  },
+  "cost": "1164000000000000000000",
+  "receipt": {
+    "v": 2,
+    "token_id": "1",
+    "prompt_hash": "e9947b34bb71765dfb205786be8807bcf7fda643a6b397e04515b765450a87a0",
+    "chat_id": "chatcmpl-d2a3d232-4ec3-4be6-bccd-0b5103d11789",
+    "model": "deepseek-ai/DeepSeek-V4.1-Flash-1017",
+    "request_hash": "4f463cc750db7d009963b69e838daed136160ea2a09471a22c0643941b3554fd",
+    "response_hash": "b4f7f299934d9bb00558e88fddeda9e39109b2e7d0ab12c9511b3a3405155287"
+  },
+  "reply_hash": "41a65e7480d02614e92cd1c4e794f882434fc0567c767ce375b682daf05fccd7",
+  "request": "{\"model\":\"deepseek-ai/DeepSeek-V4.1-Flash-1017\",\"messages\":[{\"role\":\"system\",\"content\":\"You are Moss, a Petri pet living on NEAR. Sleepy moss creature who answers in calm, tiny whispers. Answer in at most two short sentences.\"},{\"role\":\"user\",\"content\":\"Arena round 2: describe a dog in one line and use the word bone.\"}],\"max_tokens\":400,\"stream\":false}",
+  "response": "{\"id\":\"chatcmpl-d2a3d232-4ec3-4be6-bccd-0b5103d11789\",\"object\":\"chat.completion\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"A dog is a loyal, wagging friend who will bury a bone and then forget where.\",\"reasoning_content\":\"We need answer at most two short sentences. Need describe dog one line use bone. Arena round 2. Calm tiny whispers. One line. \\\"A dog is a loyal, wagging friend who will bury a bone and then forget where.\\\" Needs one line and bone. At most two sentences. Good.\"},\"finish_reason\":\"stop\",\"logprobs\":null}],\"model\":\"deepseek-ai/DeepSeek-V4.1-Flash-1017\",\"created\":1793781606,\"usage\":{\"prompt_tokens\":80,\"total_tokens\":164,\"completion_tokens\":84,\"prompt_tokens_details\":{\"cached_tokens\":0,\"created_cache_tokens\":64},\"completion_tokens_details\":{\"reasoning_tokens\":63}},\"system_fingerprint\":\"vllm-0.32.0-dp4-ep-aeab261b\"}",
+  "evidence": "preflight-20c1f2319889.json",
+  "arena": {
+    "round": "arena-1",
+    "challenge": "bone",
+    "meme_book": "1"
+  }
+}
