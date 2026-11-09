@@ -26,10 +26,16 @@
     "record:moss": "MOCK_AI=0 node scripts/record-moss.mjs",
     "record:pot": "MOCK_AI=0 node scripts/record-pot.mjs",
     "web:export": "node scripts/export-static.mjs",
+    "wallet:live": "node scripts/wallet-live.mjs",
     "web:static": "pnpm web:install && pnpm web:export && VITE_STATIC=1 pnpm --dir web build && node scripts/scan-static.mjs web/dist-static"
   },
   "dependencies": {
     "@phala/dcap-qvl": "0.7.0",
     "ethers": "6.17.0"
+  },
+  "devDependencies": {
+    "@near-js/crypto": "2.5.1",
+    "@near-js/transactions": "2.5.1",
+    "@near-js/utils": "2.5.1"
   }
 }

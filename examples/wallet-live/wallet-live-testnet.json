@@ -1,0 +1,108 @@
+{
+  "network": "testnet",
+  "signer": "guest1-1793595336.testnet",
+  "contract": "v2.petri-1793597952.testnet",
+  "token": "shitzu-0.factory.v10.meme-cooking.testnet",
+  "ran_at_utc": "2026-11-09T13:06:48.711Z",
+  "built_by": "lib/txs.mjs (swapNearForShitzuTxs, tipTx, openBookTx, backTx)",
+  "start": {
+    "near_spendable": "0.00380520856629949999999",
+    "shitzu": "3296.521432824389217147"
+  },
+  "end": {
+    "near_spendable": "0.00380520856629949999999",
+    "shitzu": "3296.521432824389217147"
+  },
+  "open_book": null,
+  "steps": [
+    {
+      "step": "1. swap 0.05 NEAR for SHITZU (quote 355.364800265767241343, min_amount_out 337.596560252478879275)",
+      "status": "skipped",
+      "reason": "needs 0.076000000000000000000001 NEAR up front (deposits + prepaid gas), guest1-1793595336.testnet has 0.00380520856629949999999 spendable",
+      "planned": [
+        {
+          "receiverId": "wrap.testnet",
+          "actions": [
+            {
+              "type": "FunctionCall",
+              "params": {
+                "methodName": "near_deposit",
+                "args": {},
+                "gas": "10000000000000",
+                "deposit": "50000000000000000000000"
+              }
+            },
+            {
+              "type": "FunctionCall",
+              "params": {
+                "methodName": "ft_transfer_call",
+                "args": {
+                  "receiver_id": "ref-finance-101.testnet",
+                  "amount": "50000000000000000000000",
+                  "msg": "{\"force\":0,\"actions\":[{\"pool_id\":2190,\"token_in\":\"wrap.testnet\",\"token_out\":\"shitzu-0.factory.v10.meme-cooking.testnet\",\"min_amount_out\":\"337596560252478879275\"}]}"
+                },
+                "gas": "250000000000000",
+                "deposit": "1"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "step": "2. tip Mochi 1 SHITZU",
+      "status": "skipped",
+      "reason": "needs 0.010000000000000000000001 NEAR up front (deposits + prepaid gas), guest1-1793595336.testnet has 0.00380520856629949999999 spendable",
+      "planned": [
+        {
+          "receiverId": "shitzu-0.factory.v10.meme-cooking.testnet",
+          "actions": [
+            {
+              "type": "FunctionCall",
+              "params": {
+                "methodName": "ft_transfer_call",
+                "args": {
+                  "receiver_id": "v2.petri-1793597952.testnet",
+                  "amount": "1000000000000000000",
+                  "msg": "{\"action\":\"tip\",\"token_id\":\"0\"}"
+                },
+                "gas": "100000000000000",
+                "deposit": "1"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "step": "3. open book 0 vs 1 (24 h)",
+      "status": "skipped",
+      "reason": "needs 0.013 NEAR up front (deposits + prepaid gas), guest1-1793595336.testnet has 0.00380520856629949999999 spendable",
+      "planned": [
+        {
+          "receiverId": "v2.petri-1793597952.testnet",
+          "actions": [
+            {
+              "type": "FunctionCall",
+              "params": {
+                "methodName": "meme_open_book",
+                "args": {
+                  "pet_a": "0",
+                  "pet_b": "1",
+                  "window_secs": 86400
+                },
+                "gas": "30000000000000",
+                "deposit": "10000000000000000000000"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "step": "4. back Moss 1 SHITZU",
+      "status": "skipped",
+      "reason": "no open book for 0 vs 1"
+    }
+  ]
+}
