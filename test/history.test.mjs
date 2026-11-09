@@ -21,21 +21,21 @@ test('parseEvents keeps only NEP-297 lines', () => {
     .map((e) => e.event), ['nft_mint']);
 });
 
-test('real testnet history: Mochi earned its 0.5 NEAR mint and paid 4 TEE replies', () => {
+test('real testnet history: Mochi earned its 0.5 NEAR mint and paid 5 TEE replies (incl. round-6 reply-8)', () => {
   const h = aggregateHistory(SNAP.events, { token_id: '0', currentOwner: 'petri-1793597952.testnet' });
   assert.equal(h.earned.mint, 5n * 10n ** 23n);
-  assert.equal(h.paid.replies, 4);
-  assert.equal(h.paid.total, 1150000000000000000000n + 1147000000000000000000n + 1130000000000000000000n + 1151000000000000000000n);
+  assert.equal(h.paid.replies, 5);
+  assert.equal(h.paid.total, 1150000000000000000000n + 1147000000000000000000n + 1130000000000000000000n + 1151000000000000000000n + 1159000000000000000000n);
   assert.deepEqual(h.holders.map((x) => x.account), ['petri-1793597952.testnet']);
   assert.equal(h.unrecorded_transfer, false);
-  assert.deepEqual(h.arena, { rounds: 1, wins: 0 });
+  assert.deepEqual(h.arena, { rounds: 2, wins: 1 }); // lost #0 "puddle", won #1 "bone"
 });
 
-test('real testnet history: Moss charged 2 replies from its own account and won the arena', () => {
+test('real testnet history: Moss charged 4 replies from its own account and won arena #0', () => {
   const h = aggregateHistory(SNAP.events, { token_id: '1' });
-  assert.equal(h.paid.replies, 2);
-  assert.equal(h.paid.by_pet_account, 2);
-  assert.deepEqual(h.arena, { rounds: 1, wins: 1 });
+  assert.equal(h.paid.replies, 4);
+  assert.equal(h.paid.by_pet_account, 4);
+  assert.deepEqual(h.arena, { rounds: 2, wins: 1 });
   const ts = h.timeline.map((e) => BigInt(e.ts));
   assert.deepEqual(ts, [...ts].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)), 'timeline is sorted by block time');
 });

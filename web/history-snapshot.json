@@ -1,6 +1,6 @@
 {
   "contract": "v2.petri-1793597952.testnet",
-  "fetched_at": "2026-11-04T07:38:37.931Z",
+  "fetched_at": "2026-11-09T05:18:09.683Z",
   "events": [
     {
       "tx": "ENUmLpeyArGcoMLUF9EU55Mxit4nD2bEgPFQ3k2E9Krk",
@@ -123,8 +123,68 @@
       "method": "request_foreign_signature",
       "token_id": "1",
       "amount": "1"
+    },
+    {
+      "tx": "BxKne9A5MoziKDf3E88qCetxFBiHPbbjtWdKdYc4Y4UW",
+      "ts": "1793777837347034421",
+      "ok": true,
+      "by": "pet-1.v2.petri-1793597952.testnet",
+      "kind": "charge",
+      "method": "charge_verified",
+      "token_id": "1",
+      "amount": "1149000000000000000000"
+    },
+    {
+      "tx": "7e81RQcgz9A9pqRAme8hSRVPP5YnhmWBAdbSh4QMzptG",
+      "ts": "1793781664314704396",
+      "ok": true,
+      "by": "petri-backend-1793597952.testnet",
+      "kind": "charge",
+      "method": "charge_verified",
+      "token_id": "0",
+      "amount": "1159000000000000000000"
+    },
+    {
+      "tx": "2ekXb8md8w6PcKWud6aXJevb2HgCzfEjv2pk1SYiaK4G",
+      "ts": "1793781652148735532",
+      "ok": true,
+      "by": "pet-1.v2.petri-1793597952.testnet",
+      "kind": "charge",
+      "method": "charge_verified",
+      "token_id": "1",
+      "amount": "1164000000000000000000"
+    },
+    {
+      "tx": "2DEmzZhuR41hpRLstGbMC2Tuo5rXw4uq1Z25j9rBV1aC",
+      "ts": "1793781674126126344",
+      "ok": true,
+      "by": "guest1-1793595336.testnet",
+      "kind": "arena",
+      "method": "arena_settle",
+      "token_id": "0",
+      "won": true
+    },
+    {
+      "tx": "2DEmzZhuR41hpRLstGbMC2Tuo5rXw4uq1Z25j9rBV1aC",
+      "ts": "1793781674126126344",
+      "ok": true,
+      "by": "guest1-1793595336.testnet",
+      "kind": "arena",
+      "method": "arena_settle",
+      "token_id": "1",
+      "won": false
+    },
+    {
+      "tx": "H9xyJbGcUCS6bn7rfw38yxuHDvLYKpjdWS6PH9Vv44iM",
+      "ts": "1793781711990243043",
+      "ok": true,
+      "by": "petri-1793597952.testnet",
+      "kind": "other",
+      "method": "meme_claim_jar",
+      "token_id": "0",
+      "amount": "0"
     }
   ],
   "source": "archival RPC (known txs)",
-  "tx_count": 11
+  "tx_count": 19
 }

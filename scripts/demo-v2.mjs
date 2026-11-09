@@ -72,12 +72,12 @@ ok &&= onlyCharge && p1.replies >= 1;
 // Round 4 upgrade (deploy + migrate, same address) kept the pets; round 5 (memecoin pots,
 // plain deploy: new state lives under raw prefixes, no migration) kept them again.
 // The live code is the reproducible `pnpm build:contract:deploy` wasm of this commit.
-const ROUND4_CODE_HASH = '9MiRFRk5Qif8oPyQgRDEXFzMTDgpnDGAK3CtShS2GWk';
+const ROUND4_CODE_HASH = '58cQ9Pa6puC72jS4REXWDnfwFdwY4u7FV8Krsj7CTdRt'; // round 7 hardening redeploy (tx B89MLRoEs1HumttycPbdqweowGmSrt1qD9ryeCZubyiS)
 const live = await rpc({ request_type: 'view_account', finality: 'final', account_id: CONTRACT });
 const r4 = live.code_hash === ROUND4_CODE_HASH && pets[0].name === 'Mochi' && pets[1].name === 'Moss'
   && typeof pets[1].pet_key_active === 'boolean' && pets[1].pet_key_active === true;
 ok &&= r4;
-console.log(`round 5 code ${live.code_hash} ${live.code_hash === ROUND4_CODE_HASH ? '✓ = pnpm build:contract:deploy' : '✗ expected ' + ROUND4_CODE_HASH}; Mochi #0 + Moss #1 kept; Moss pet_key_active=${pets[1].pet_key_active} ${r4 ? '✓ (key frozen on sale, rekey_pet)' : '✗'}`);
+console.log(`round 7 code ${live.code_hash} ${live.code_hash === ROUND4_CODE_HASH ? '✓ = pnpm build:contract:deploy' : '✗ expected ' + ROUND4_CODE_HASH}; Mochi #0 + Moss #1 kept; Moss pet_key_active=${pets[1].pet_key_active} ${r4 ? '✓ (key frozen on sale, rekey_pet)' : '✗'}`);
 // Tip from any chain: pet #1's EVM address comes from NEAR Chain Signatures; the recorded MPC signature must recover to it.
 const { petEvmAddress, signedSweep, loadNetwork } = await import('../lib/tip.mjs');
 const { ethers } = await import('ethers');
@@ -96,5 +96,5 @@ const book1 = await view('meme_get_book', { book_id: '1' });
 const b1ok = book1?.state === 'Settled' && book1.winner === '0' && book1.arena_id === '1' && book1.rake === String(10n * 10n ** 18n);
 console.log(`live settle: book #1 ${book1?.state}, winner pet #${book1?.winner} via arena #${book1?.arena_id} (real reply-8 vs reply-9), rake ${book1 ? Number(BigInt(book1.rake) / 10n ** 18n) : '?'} SHITZU to the winner's jar ${b1ok ? '✓' : '✗'}`);
 console.log(`memecoin pots: token ${mcfg?.token} (real testnet SHITZU), rake ${mcfg?.rake_bps} bps, void after ${mcfg?.void_after_secs}s, immutable ${memeOk ? '✓' : '✗'}; book #0 pets ${book0?.pets} state ${book0?.state}, staked ${book0?.totals.map((t) => Number(BigInt(t) / 10n ** 18n))} SHITZU by ${book0?.backers} backers`);
-console.log(ok ? '=> EVERY CHARGED REPLY IS TEE-VERIFIED ON-CHAIN, THE ARENA RESULT REPRODUCES, THE PET SIGNS ON OTHER CHAINS, ROUND-5 CODE IS LIVE' : '=> MISMATCH');
+console.log(ok ? '=> EVERY CHARGED REPLY IS TEE-VERIFIED ON-CHAIN, THE ARENA RESULT REPRODUCES, THE PET SIGNS ON OTHER CHAINS, ROUND-7 CODE IS LIVE' : '=> MISMATCH');
 process.exit(ok ? 0 : 1);

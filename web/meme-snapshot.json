@@ -59,7 +59,7 @@
           "C8cWxtUunFs1D4ocFb5L73SLY55LZH1RdzSBsixF7Tau"
         ],
         [
-          "jar \u2192 owner",
+          "jar → owner",
           "H9xyJbGcUCS6bn7rfw38yxuHDvLYKpjdWS6PH9Vv44iM"
         ]
       ]
@@ -120,5 +120,5 @@
     }
   ],
   "contract": "v2.petri-1793597952.testnet",
-  "fetched_at": "2026-11-04T08:45:06.474997Z"
+  "fetched_at": "2026-11-09T05:17:36.841Z"
 }
